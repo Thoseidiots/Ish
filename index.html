@@ -178,7 +178,7 @@ const Logger={log(m,t='info'){const e=document.createElement('div');e.className=
   info:m=>this.log(m,'info'),success:m=>this.log(m,'success'),error:m=>this.log(m,'error'),warning:m=>this.log(m,'warning'),clear(){UI.e.log.innerHTML='';}};
 
 /*=====================================================================
-  UUID & IMAGE UTILS
+  UUID HANDLING
 =====================================================================*/
 const UUIDUtils = { 
   uuidToBlob: function(uuid) {
@@ -187,6 +187,12 @@ const UUIDUtils = {
     const bytes = new Uint8Array(16);
     for (let i = 0; i < 16; i++) bytes[i] = parseInt(clean.substr(i * 2, 2), 16);
     return bytes.buffer;
+  },
+  blobToUuid: function(blob) {
+    const bytes = new Uint8Array(blob);
+    let uuid = '';
+    for (let i = 0; i < 16; i++) uuid += bytes[i].toString(16).padStart(2, '0');
+    return `${uuid.substr(0,8)}-${uuid.substr(8,4)}-${uuid.substr(12,4)}-${uuid.substr(16,4)}-${uuid.substr(20,12)}`;
   },
   generateUuidBlob: function() {
     const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -198,6 +204,9 @@ const UUIDUtils = {
   }
 };
 
+/*=====================================================================
+  IMAGE VALIDATOR
+=====================================================================*/
 const ImageValidator = {
   async validateAlphaAndOptimise(data, max = 1024) {
     const b = new Blob([data], { type: 'image/png' });
@@ -214,9 +223,10 @@ const ImageValidator = {
           if (imageData.data[j] < 255) { hasAlpha = true; break; }
         }
         if (!hasAlpha) {
+          Logger.warning('No alpha channel - adding transparency');
           for (let j = 3; j < imageData.data.length; j += 4) {
-            imageData.data[j] = 255 - imageData.data[j - 3];
-            imageData.data[j - 3] = imageData.data[j - 2] = imageData.data[j - 1] = 255;
+            imageData.data[j] = 255 - imageData.data[j - 3]; // Use red channel for alpha (grayscale transparency)
+            imageData.data[j - 3] = imageData.data[j - 2] = imageData.data[j - 1] = 255; // Set color to white
           }
         }
         ctx.putImageData(imageData, 0, 0);
@@ -384,11 +394,12 @@ async parseModernABR(buf,view){
       if(res.length) res[res.length-1].curves.size=points;
     }
   }
+  if(!res.length)res.push({name:'Modern_Placeholder',brushSize:50,opacity:80,spacing:5,hardness:50,angle:0,tipData:this.placeholderTip()});
   return res;
 },
 async sampledChunk(chunk){
   const view = new DataView(chunk.buffer); let off = 0;
-  off += 4;
+  off += 4; // version
   const id = view.getUint32(off); off += 4;
   const depth = view.getUint16(off); off += 2;
   if (depth !== 8) throw new Error('Unsupported depth');
@@ -408,8 +419,46 @@ async sampledChunk(chunk){
   ctx.putImageData(idata, 0, 0);
   return {tipData: c.toDataURL('image/png'), brushSize: w/100, hardness: 0.5};
 },
-async rleDecode(buf,w,h,comp){/* ... same as before ... */},
-async computedTip(d,r,a,h){/* ... same as before ... */},
+async rleDecode(buf,w,h,comp){
+  const out = [];
+  let off = 0;
+  if(comp === 0) {
+    for(let i=0; i<w*h; i++) out.push(buf[off++]);
+    return out;
+  }
+  for(let y=0;y<h;y++){
+    const lineLen = new DataView(buf.buffer).getUint16(off); off += 2;
+    let pos = 0;
+    while(pos < lineLen){
+      const code = buf[off++]; pos++;
+      if(code >= 0){
+        const len = code + 1;
+        for(let k=0;k<len;k++) out.push(buf[off++]);
+        pos += len;
+      }else if(code > -128){
+        const val = buf[off++]; pos++;
+        const len = -code + 1;
+        for(let k=0;k<len;k++) out.push(val);
+      }
+    }
+  }
+  return out;
+},
+async computedTip(d,r,a,h){
+  const c=document.createElement('canvas');c.width=c.height=d;const ctx=c.getContext('2d');
+  const cx=d/2,cy=d/2,rad=d/2;
+  ctx.save();ctx.translate(cx,cy);ctx.rotate(a*Math.PI/180);ctx.scale(1,r);
+  const grad=ctx.createRadialGradient(0,0,0,0,0,rad);
+  grad.addColorStop(0,'rgba(255,255,255,1)');grad.addColorStop(h,'rgba(255,255,255,1)');grad.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.beginPath();ctx.arc(0,0,rad,0,Math.PI*2);ctx.fillStyle=grad;ctx.fill();
+  if(h<0.9){ctx.globalAlpha=0.1;
+    for(let i=0;i<100;i++){
+      const x=(Math.random()-0.5)*d,y=(Math.random()-0.5)*d,rr=Math.random()*3;
+      ctx.beginPath();ctx.arc(x,y,rr,0,Math.PI*2);ctx.fill();
+    }
+  }
+  ctx.restore();return c.toDataURL('image/png');
+},
 mapBlendMode(m){const map={0:0,1:1,2:2,3:3,4:4,5:5,6:6,7:3,8:1,9:2,10:1,11:5,12:6,13:0,14:0};
   const c=map[m];if(c===undefined){Logger.warning(`Blend ${m} → Normal`);return 0;}return c;},
 cleanup(){this.urls.forEach(u=>u.startsWith('blob:')&&URL.revokeObjectURL(u));this.urls=[];}};
@@ -447,10 +496,10 @@ const SUTConverter = {
       const variantId = UUIDUtils.generateUuidBlob();
 
       db.run(`INSERT INTO Manager (_PW_ID, ToolType, Version, RootUuid, CurrentNodeUuid, MaxVariantID, CommonVariantID, ObjectNodeUuid, PressureGraph, SavedCount, PressureGraphInitialized, UsePressureFile) VALUES (1, 2, 1, ?, ?, 1, 1, ?, NULL, 1, 1, 0)`, [rootUuid, nodeUuid, objectUuid]);
-      db.run(`INSERT INTO Node (_PW_ID, NodeUuid, NodeName, NodeShortCutKey, NodeLock, NodeInputOp, NodeOutputOp, NodeRangeOp, NodeIcon, NodeIconColor, NodeHidden, NodeInstalledState, NodeInstalledVersion, NodeHideByGrade, NodeDefaultIdentifier, NodeMaterialIDExists, NodeMaterialContentID, NodeMaterialUuid, NodeNextUuid, NodeFirstChildUuid, NodeSelectedUuid, NodeVariantID, NodeInitVariantID, NodeCustomIcon) VALUES (1, ?, ?, NULL, 0, 1, 1, 0, NULL, NULL, 0, 1, 1, 0, NULL, 1, 1, ?, NULL, NULL, ?, ?, 1, NULL)`, [nodeUuid, brush.name, UUIDUtils.uuidToBlob(materialUuid), selectedUuid, variantId]);
+      db.run(`INSERT INTO Node (_PW_ID, NodeUuid, NodeName, NodeShortCutKey, NodeLock, NodeInputOp, NodeOutputOp, NodeRangeOp, NodeIcon, NodeIconColor, NodeHidden, NodeInstalledState, NodeInstalledVersion, NodeHideByGrade, NodeDefaultIdentifier, NodeMaterialIDExists, NodeMaterialContentID, NodeMaterialUuid, NodeNextUuid, NodeFirstChildUuid, NodeSelectedUuid, NodeVariantID, NodeInitVariantID, NodeCustomIcon) VALUES (1, ?, ?, NULL, 0, 1, 1, 0, NULL, NULL, 0, 1, 1, 0, NULL, 1, 1, ?, NULL, NULL, ?, ?, 1, NULL)`, [nodeUuid, brush.name, UUIDUtils.blobToUuid(materialUuid), selectedUuid, variantId]);
 
       const tipData = await ImageValidator.validateAlphaAndOptimise(brush.tipPNG ? await (await fetch(brush.tipPNG)).arrayBuffer() : new Uint8Array(0));
-      db.run(`INSERT INTO MaterialFile (_PW_ID, InstallFolder, OriginalPath, OldMaterial, FileData, CatalogPath, MaterialUuid) VALUES (1, 0, '', 0, ?, '', ?)`, [tipData, UUIDUtils.uuidToBlob(materialUuid)]);
+      db.run(`INSERT INTO MaterialFile (_PW_ID, InstallFolder, OriginalPath, OldMaterial, FileData, CatalogPath, MaterialUuid) VALUES (1, 0, '', 0, ?, '', ?)`, [tipData, UUIDUtils.blobToUuid(materialUuid)]);
 
       const defaultCurve = [[0,0],[1,1]];
       if (brush.sizePressure) {
@@ -459,7 +508,7 @@ const SUTConverter = {
       }
       if (brush.opacityPressure) {
         const curveData = this.createPressureCurve(brush.pressureCurves.opacity || defaultCurve);
-        db.run(`INSERT INTO PressureCurve (CurveID, PropertyID, CurveType, CurveData) VALUES (NULL, 1, 'opacity', ?)`, [curveData]);
+        db.run(`INSERT INTO PressureCurve (CurveID, PropertyType, CurveType, CurveData) VALUES (NULL, 1, 'opacity', ?)`, [curveData]);
       }
 
       const mainCurve = brush.pressureCurves.size || brush.pressureCurves.opacity || defaultCurve;
@@ -496,6 +545,16 @@ const Converter={async convert(brushes,format){
         zip.file(`${brushes[i].name}.png`, pngData);
         AppState.stats.brushesConverted++;UI.updateStats();UI.showProgress(((i+1)/total)*100);
       }catch(e){Logger.warning(`PNG export failed: ${e.message}`);}
+    }
+  } else if(format==='json'){
+    for(let i=0;i<total;i++){
+      if(i%5===0)await new Promise(r=>setTimeout(r,1));
+      try{
+        const pngData = await (await fetch(brushes[i].tipPNG)).arrayBuffer();
+        zip.file(`${brushes[i].name}.png`, pngData);
+        zip.file(`${brushes[i].name}.json`, JSON.stringify(brushes[i], null, 2));
+        AppState.stats.brushesConverted++;UI.updateStats();UI.showProgress(((i+1)/total)*100);
+      }catch(e){Logger.warning(`JSON export failed: ${e.message}`);}
     }
   }
   return zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:lvl}});
