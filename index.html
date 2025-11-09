@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -62,21 +63,29 @@
         .preview-item img{width:100%;height:100px;object-fit:contain;border:1px solid #dee2e6;border-radius:5px;background:#fff}
         .preview-item p{font-size:.8em;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .pressure-curve-editor{margin-top:15px;padding:15px;background:#f8f9fa;border-radius:8px}
-        .curve-canvas{width:100%;height:150px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:crosshair;margin-top:10px}
+        .curve-canvas{width:100%;height:150px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:crosshair;margin-top:10px;touch-action:none}
         .checkbox-group{display:flex;align-items:center;margin:10px 0}
         .checkbox-group input[type=checkbox]{margin-right:10px;width:auto}
-        .tabs{display:flex;border-bottom:2px solid #dee2e6;margin-bottom:20px}
-        .tab{padding:10px 20px;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:#495057;font-weight:500}
+        .tabs{display:flex;border-bottom:2px solid #dee2e6;margin-bottom:20px;overflow-x:auto}
+        .tab{padding:10px 20px;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:#495057;font-weight:500;white-space:nowrap}
         .tab.active{border-bottom-color:#667eea;color:#667eea}
         .tab-content{display:none}
         .tab-content.active{display:block}
         .footer{text-align:center;padding:20px;margin-top:30px;color:rgba(255,255,255,.7);font-size:.9em}
         .advanced-settings{background:#fff3cd;padding:15px;border-radius:8px;margin-top:20px}
         .advanced-settings h4{margin-bottom:10px;color:#856404}
-        @media(max-width:768px){.controls{grid-template-columns:1fr}.import-options{grid-template-columns:1fr}}
+        .warning-banner{background:#fff3cd;border:1px solid #ffeaa7;border-radius:8px;padding:15px;margin-bottom:20px;color:#856404}
+        .loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:9999}
+        .loading-overlay.show{display:flex}
+        .loading-spinner{width:50px;height:50px;border:5px solid #f3f3f3;border-top:5px solid #667eea;border-radius:50%;animation:spin 1s linear infinite}
+        @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+        @media(max-width:768px){.controls{grid-template-columns:1fr}.import-options{grid-template-columns:1fr}.tabs{flex-wrap:nowrap}}
     </style>
 </head>
 <body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
     <div class="container">
         <div class="header">
             <h1>CSP .sut Brush Converter</h1>
@@ -96,6 +105,11 @@
                 <input type="file" id="zipInput" accept=".zip,.brushset" style="display:none">
                 <input type="file" id="templateInput" accept=".sut" style="display:none">
             </div>
+            
+            <div class="warning-banner" id="warningBanner" style="display:none">
+                <strong>⚠️ Warning:</strong> <span id="warningText"></span>
+            </div>
+            
             <div class="stats" id="stats" style="display:none">
                 <div class="stat-card"><div class="value" id="fileCount">0</div><div class="label">Files Loaded</div></div>
                 <div class="stat-card"><div class="value" id="brushCount">0</div><div class="label">Brushes Found</div></div>
@@ -230,21 +244,39 @@
             UI.init();
             Logger.info('Initializing CSP Brush Converter Professional Edition');
             
-            // Initialize SQL.js
-            try {
-                Logger.info('Loading SQL.js engine...');
-                SQL = await initSqlJs({
-                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
-                });
-                SQL_READY = true;
-                Logger.success('SQL.js engine initialized successfully');
-            } catch (error) {
-                Logger.error(`Failed to initialize SQL.js: ${error.message}`);
-                UI.showStatus('SQL.js initialization failed - SUT conversion disabled', 'error');
+            // Show loading overlay
+            UI.showLoading(true);
+            
+            // Initialize SQL.js with retry mechanism
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            while (retryCount < maxRetries && !SQL_READY) {
+                try {
+                    Logger.info('Loading SQL.js engine...');
+                    SQL = await initSqlJs({
+                        locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+                    });
+                    SQL_READY = true;
+                    Logger.success('SQL.js engine initialized successfully');
+                    break;
+                } catch (error) {
+                    retryCount++;
+                    Logger.error(`Failed to initialize SQL.js (attempt ${retryCount}/${maxRetries}): ${error.message}`);
+                    if (retryCount < maxRetries) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    } else {
+                        UI.showWarning('SQL.js initialization failed - SUT conversion disabled. Please check your internet connection and refresh the page.');
+                        UI.showStatus('SQL.js initialization failed - SUT conversion disabled', 'error');
+                    }
+                }
             }
             
             // Initialize pressure curves
             PressureCurveUtils.initCurveEditors();
+            
+            // Hide loading overlay
+            UI.showLoading(false);
             
             // Enable convert button if both files and template are already loaded
             if (AppState.filesLoaded && AppState.templateLoaded) {
@@ -263,7 +295,9 @@
                 filesLoaded: 0,
                 brushesParsed: 0,
                 brushesConverted: 0
-            }
+            },
+            maxFileSize: 50 * 1024 * 1024, // 50MB limit
+            maxFiles: 100 // Maximum number of files
         };
         
         // UI management
@@ -289,7 +323,10 @@
                 outputFormat: document.getElementById('outputFormat'),
                 formatInfo: document.getElementById('formatInfo'),
                 previewContainer: document.getElementById('previewContainer'),
-                previewGrid: document.getElementById('previewGrid')
+                previewGrid: document.getElementById('previewGrid'),
+                warningBanner: document.getElementById('warningBanner'),
+                warningText: document.getElementById('warningText'),
+                loadingOverlay: document.getElementById('loadingOverlay')
             },
             init() {
                 // Tab switching
@@ -424,6 +461,20 @@
                 this.elements.progressBar.classList.add('show');
                 this.elements.progressFill.style.width = percent + '%';
             },
+            showWarning(message) {
+                this.elements.warningBanner.style.display = 'block';
+                this.elements.warningText.textContent = message;
+            },
+            hideWarning() {
+                this.elements.warningBanner.style.display = 'none';
+            },
+            showLoading(show) {
+                if (show) {
+                    this.elements.loadingOverlay.classList.add('show');
+                } else {
+                    this.elements.loadingOverlay.classList.remove('show');
+                }
+            },
             updateStats() {
                 this.elements.stats.style.display = 'grid';
                 this.elements.fileCount.textContent = AppState.stats.filesLoaded;
@@ -443,6 +494,7 @@
                     const img = document.createElement('img');
                     img.src = brush.tipPNG;
                     img.alt = brush.name;
+                    img.loading = 'lazy';
                     const label = document.createElement('p');
                     label.textContent = brush.name;
                     label.title = brush.name;
@@ -567,11 +619,13 @@
                 
                 const draw = () => this.drawCurve(canvas, points);
                 
-                const getMousePos = (e) => {
+                const getEventPos = (e) => {
                     const rect = canvas.getBoundingClientRect();
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                     return {
-                        x: (e.clientX - rect.left) / rect.width,
-                        y: 1 - (e.clientY - rect.top) / rect.height
+                        x: (clientX - rect.left) / rect.width,
+                        y: 1 - (clientY - rect.top) / rect.height
                     };
                 };
                 
@@ -586,8 +640,9 @@
                     return -1;
                 };
                 
+                // Mouse events
                 canvas.addEventListener('mousedown', (e) => {
-                    const pos = getMousePos(e);
+                    const pos = getEventPos(e);
                     dragIndex = getPointIndex(pos);
                     if (dragIndex !== -1) {
                         isDragging = true;
@@ -597,7 +652,7 @@
                 });
                 
                 canvas.addEventListener('mousemove', (e) => {
-                    const pos = getMousePos(e);
+                    const pos = getEventPos(e);
                     if (isDragging && dragIndex !== -1) {
                         if (dragIndex === 0) {
                             points[dragIndex] = [0, Math.max(0, Math.min(1, pos.y))];
@@ -627,6 +682,40 @@
                     isDragging = false;
                     dragIndex = -1;
                     canvas.style.cursor = 'crosshair';
+                    e.preventDefault();
+                });
+                
+                // Touch events for mobile
+                canvas.addEventListener('touchstart', (e) => {
+                    const pos = getEventPos(e);
+                    dragIndex = getPointIndex(pos);
+                    if (dragIndex !== -1) {
+                        isDragging = true;
+                    }
+                    e.preventDefault();
+                });
+                
+                canvas.addEventListener('touchmove', (e) => {
+                    if (isDragging && dragIndex !== -1) {
+                        const pos = getEventPos(e);
+                        if (dragIndex === 0) {
+                            points[dragIndex] = [0, Math.max(0, Math.min(1, pos.y))];
+                        } else if (dragIndex === points.length - 1) {
+                            points[dragIndex] = [1, Math.max(0, Math.min(1, pos.y))];
+                        } else {
+                            points[dragIndex] = [
+                                Math.max(points[dragIndex-1][0] + 0.01, Math.min(points[dragIndex+1][0] - 0.01, pos.x)),
+                                Math.max(0, Math.min(1, pos.y))
+                            ];
+                        }
+                        draw();
+                    }
+                    e.preventDefault();
+                });
+                
+                canvas.addEventListener('touchend', (e) => {
+                    isDragging = false;
+                    dragIndex = -1;
                     e.preventDefault();
                 });
                 
@@ -728,6 +817,7 @@
                     AppState.templateLoaded = true;
                     Logger.success('SUT template loaded successfully');
                     UI.showStatus('Template loaded - ready for conversion', 'success');
+                    UI.hideWarning();
                     
                     if (AppState.filesLoaded && AppState.files.length > 0) {
                         UI.enableConvertButton();
@@ -768,9 +858,20 @@
                 AppState.files = [];
                 
                 try {
+                    // Check file count limit
+                    if (files.length > AppState.maxFiles) {
+                        UI.showWarning(`Too many files selected. Only the first ${AppState.maxFiles} files will be processed.`);
+                        files = files.slice(0, AppState.maxFiles);
+                    }
+                    
                     for (const file of files) {
                         if (file.size === 0) {
                             Logger.warning(`Skipping empty file: ${file.name}`);
+                            continue;
+                        }
+                        
+                        if (file.size > AppState.maxFileSize) {
+                            Logger.warning(`Skipping large file: ${file.name} (exceeds ${AppState.maxFileSize / 1024 / 1024}MB limit)`);
                             continue;
                         }
                         
@@ -797,6 +898,7 @@
                         UI.enableConvertButton();
                         UI.showStatus('Ready to convert', 'success');
                     } else {
+                        UI.showWarning('Files loaded - please load a SUT template to continue');
                         UI.showStatus('Files loaded - please load a SUT template to continue', 'info');
                     }
                 } catch (error) {
