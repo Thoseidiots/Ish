@@ -37,6 +37,8 @@
         .btn:disabled{background:#adb5bd;cursor:not-allowed;box-shadow:none}
         .btn-secondary{background:linear-gradient(135deg,#6c757d 0%,#495057 100%);box-shadow:0 4px 15px rgba(108,117,125,.4)}
         .btn-secondary:hover:not(:disabled){box-shadow:0 6px 20px rgba(108,117,125,.6)}
+        .btn-danger{background:linear-gradient(135deg,#dc3545 0%,#c82333 100%);box-shadow:0 4px 15px rgba(220,53,69,.4)}
+        .btn-danger:hover:not(:disabled){box-shadow:0 6px 20px rgba(220,53,69,.6)}
         .status-bar{background:#e9ecef;padding:15px;border-radius:8px;margin-bottom:20px;display:none;align-items:center;gap:10px}
         .status-bar.show{display:flex}
         .status-bar.success{background:#d4edda;color:#155724}
@@ -66,8 +68,8 @@
         .curve-canvas{width:100%;height:150px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:crosshair;margin-top:10px;touch-action:none}
         .checkbox-group{display:flex;align-items:center;margin:10px 0}
         .checkbox-group input[type=checkbox]{margin-right:10px;width:auto}
-        .tabs{display:flex;border-bottom:2px solid #dee2e6;margin-bottom:20px;overflow-x:auto}
-        .tab{padding:10px 20px;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:#495057;font-weight:500;white-space:nowrap}
+        .tabs{display:flex;border-bottom:2px solid #dee2e6;margin-bottom:20px;overflow-x:auto;flex-wrap:wrap}
+        .tab{padding:10px 20px;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:#495057;font-weight:500;white-space:nowrap;flex:1 0 50%}
         .tab.active{border-bottom-color:#667eea;color:#667eea}
         .tab-content{display:none}
         .tab-content.active{display:block}
@@ -78,8 +80,13 @@
         .loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:9999}
         .loading-overlay.show{display:flex}
         .loading-spinner{width:50px;height:50px;border:5px solid #f3f3f3;border-top:5px solid #667eea;border-radius:50%;animation:spin 1s linear infinite}
+        .button-group{display:flex;gap:10px;margin-bottom:20px}
+        .button-group .btn{flex:1}
         @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
-        @media(max-width:768px){.controls{grid-template-columns:1fr}.import-options{grid-template-columns:1fr}.tabs{flex-wrap:nowrap}}
+        @media(max-width:768px){.controls{grid-template-columns:1fr}.import-options{grid-template-columns:1fr}.curve-canvas{width:100% !important;height:200px !important}.button-group{flex-direction:column}}
+        .failed-brushes{background:#f8d7da;border:1px solid #f5c6cb;border-radius:8px;padding:15px;margin-top:20px;color:#721c24}
+        .failed-brushes h4{margin-bottom:10px}
+        .failed-brushes ul{list-style-position:inside;margin:0}
     </style>
 </head>
 <body>
@@ -100,6 +107,7 @@
                     <button class="btn" id="importFilesBtn">Import Files</button>
                     <button class="btn" id="importZipBtn">Import ZIP/Brushset</button>
                     <button class="btn btn-secondary" id="loadTemplateBtn">Load SUT Template</button>
+                    <button class="btn btn-danger" id="clearAllBtn">Clear All</button>
                 </div>
                 <input type="file" id="fileInput" multiple accept=".png,.abr,.zip,.brushset" style="display:none">
                 <input type="file" id="zipInput" accept=".zip,.brushset" style="display:none">
@@ -129,8 +137,8 @@
             <div id="basic" class="tab-content active">
                 <div class="controls">
                     <div class="control-group">
-                        <label for="packageName">Package Name</label>
-                        <input type="text" id="packageName" placeholder="My Custom Brushes" value="Converted Brushes">
+                        <label for="packageName">Package Name (max 100 chars)</label>
+                        <input type="text" id="packageName" placeholder="My Custom Brushes" value="Converted Brushes" maxlength="100">
                     </div>
                     <div class="control-group">
                         <label for="authorName">Author Name</label>
@@ -223,13 +231,21 @@
                     <button class="btn btn-secondary" id="resetDensityCurve" style="margin-top:10px;width:auto">Reset Curve</button>
                 </div>
             </div>
-            <button id="convertBtn" class="btn" disabled>Convert & Download</button>
+            <div class="button-group">
+                <button id="convertBtn" class="btn" disabled>Convert & Download</button>
+                <button id="cancelBtn" class="btn btn-secondary" disabled>Cancel</button>
+            </div>
             <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
             <div id="statusBar" class="status-bar"><span id="statusText">Ready</span></div>
+            <div id="failedBrushesContainer" class="failed-brushes" style="display:none">
+                <h4>Failed Conversions:</h4>
+                <ul id="failedBrushesList"></ul>
+            </div>
             <div id="log"></div>
         </div>
         <div class="footer">
             <p>CSP .sut Brush Converter - Professional Edition | Full CSP Database Schema Support</p>
+            <p>Keyboard Shortcuts: Ctrl+Enter to convert | Esc to cancel</p>
         </div>
     </div>
 
@@ -291,6 +307,7 @@
             filesLoaded: false,
             converting: false,
             templateLoaded: false,
+            abortController: null,
             stats: {
                 filesLoaded: 0,
                 brushesParsed: 0,
@@ -310,7 +327,9 @@
                 importFilesBtn: document.getElementById('importFilesBtn'),
                 importZipBtn: document.getElementById('importZipBtn'),
                 loadTemplateBtn: document.getElementById('loadTemplateBtn'),
+                clearAllBtn: document.getElementById('clearAllBtn'),
                 convertBtn: document.getElementById('convertBtn'),
+                cancelBtn: document.getElementById('cancelBtn'),
                 log: document.getElementById('log'),
                 statusBar: document.getElementById('statusBar'),
                 statusText: document.getElementById('statusText'),
@@ -326,7 +345,9 @@
                 previewGrid: document.getElementById('previewGrid'),
                 warningBanner: document.getElementById('warningBanner'),
                 warningText: document.getElementById('warningText'),
-                loadingOverlay: document.getElementById('loadingOverlay')
+                loadingOverlay: document.getElementById('loadingOverlay'),
+                failedBrushesContainer: document.getElementById('failedBrushesContainer'),
+                failedBrushesList: document.getElementById('failedBrushesList')
             },
             init() {
                 // Tab switching
@@ -382,6 +403,10 @@
                 
                 this.elements.loadTemplateBtn.addEventListener('click', () => {
                     this.elements.templateInput.click();
+                });
+                
+                this.elements.clearAllBtn.addEventListener('click', () => {
+                    this.clearAll();
                 });
                 
                 this.elements.fileInput.addEventListener('change', (e) => {
@@ -450,8 +475,66 @@
                     Converter.convertAll();
                 });
                 
+                // Cancel button
+                this.elements.cancelBtn.addEventListener('click', () => {
+                    if (AppState.converting && AppState.abortController) {
+                        AppState.abortController.abort();
+                        this.showStatus('Conversion cancelled by user', 'info');
+                    }
+                });
+                
+                // Keyboard shortcuts
+                document.addEventListener('keydown', (e) => {
+                    if (e.ctrlKey && e.key === 'Enter') {
+                        e.preventDefault();
+                        if (!this.elements.convertBtn.disabled) {
+                            Converter.convertAll();
+                        }
+                    } else if (e.key === 'Escape' && AppState.converting) {
+                        e.preventDefault();
+                        if (AppState.abortController) {
+                            AppState.abortController.abort();
+                            this.showStatus('Conversion cancelled by user', 'info');
+                        }
+                    }
+                });
+                
                 // Initialize format info
                 this.elements.outputFormat.dispatchEvent(new Event('change'));
+            },
+            clearAll() {
+                // Clean up memory
+                BrushParser.cleanup();
+                
+                // Reset state
+                AppState.files = [];
+                AppState.brushes = [];
+                AppState.filesLoaded = false;
+                AppState.templateLoaded = false;
+                AppState.stats = {
+                    filesLoaded: 0,
+                    brushesParsed: 0,
+                    brushesConverted: 0
+                };
+                
+                // Reset UI
+                this.elements.stats.style.display = 'none';
+                this.elements.previewContainer.style.display = 'none';
+                this.elements.previewGrid.innerHTML = '';
+                this.elements.failedBrushesContainer.style.display = 'none';
+                this.elements.failedBrushesList.innerHTML = '';
+                this.hideWarning();
+                this.disableConvertButton();
+                this.elements.cancelBtn.disabled = true;
+                
+                // Clear file inputs
+                this.elements.fileInput.value = '';
+                this.elements.zipInput.value = '';
+                this.elements.templateInput.value = '';
+                
+                Logger.clear();
+                Logger.info('Application reset - ready for new files');
+                this.showStatus('Ready - load files and a template to begin', 'success');
             },
             showStatus(message, type = 'info') {
                 this.elements.statusBar.className = `status-bar show ${type}`;
@@ -508,6 +591,16 @@
                     more.innerHTML = `<p style="text-align:center;padding-top:40px">+${brushes.length - 12} more</p>`;
                     this.elements.previewGrid.appendChild(more);
                 }
+            },
+            showFailedBrushes(failedBrushes) {
+                if (failedBrushes.length === 0) {
+                    this.elements.failedBrushesContainer.style.display = 'none';
+                    return;
+                }
+                this.elements.failedBrushesContainer.style.display = 'block';
+                this.elements.failedBrushesList.innerHTML = failedBrushes
+                    .map(b => `<li>${b.name}: ${b.error}</li>`)
+                    .join('');
             },
             enableConvertButton() {
                 this.elements.convertBtn.disabled = false;
@@ -799,22 +892,48 @@
             }
         };
         
-        // Template manager
+        // Template manager with caching
         const TemplateManager = {
+            templateCache: new Map(),
             async loadTemplate(file) {
                 try {
+                    UI.showLoading(true);
+                    UI.showStatus(`Loading template: ${file.name}`, 'info');
                     Logger.info(`Loading SUT template: ${file.name}`);
+                    
+                    // Check cache first
+                    const cacheKey = `${file.name}-${file.size}-${file.lastModified}`;
+                    if (this.templateCache.has(cacheKey)) {
+                        SUT_TEMPLATE = this.templateCache.get(cacheKey);
+                        AppState.templateLoaded = true;
+                        Logger.info('Using cached template');
+                        UI.showStatus('Template loaded from cache - ready for conversion', 'success');
+                        UI.hideWarning();
+                        
+                        if (AppState.filesLoaded && AppState.files.length > 0) {
+                            UI.enableConvertButton();
+                        }
+                        
+                        UI.showLoading(false);
+                        return true;
+                    }
+                    
                     const arrayBuffer = await file.arrayBuffer();
                     const db = new SQL.Database(new Uint8Array(arrayBuffer));
                     // Validate template
                     if (!this.validateTemplate(db)) {
                         Logger.error('Invalid SUT template - missing required tables');
                         UI.showStatus('Invalid template file - must be a valid CSP brush', 'error');
+                        UI.showLoading(false);
                         return false;
                     }
                     
                     SUT_TEMPLATE = new Uint8Array(arrayBuffer);
                     AppState.templateLoaded = true;
+                    
+                    // Cache the template
+                    this.templateCache.set(cacheKey, SUT_TEMPLATE);
+                    
                     Logger.success('SUT template loaded successfully');
                     UI.showStatus('Template loaded - ready for conversion', 'success');
                     UI.hideWarning();
@@ -824,10 +943,12 @@
                     }
                     
                     db.close();
+                    UI.showLoading(false);
                     return true;
                 } catch (error) {
                     Logger.error(`Failed to load template: ${error.message}`);
                     UI.showStatus('Error loading template file', 'error');
+                    UI.showLoading(false);
                     return false;
                 }
             },
@@ -955,13 +1076,15 @@
             }
         };
         
-        // Image processor
+        // Image processor with CORS handling
         const ImageProcessor = {
             async processImage(imageData) {
                 return new Promise((resolve, reject) => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     const img = new Image();
+                    
+                    img.crossOrigin = 'anonymous';
                     
                     img.onload = () => {
                         try {
@@ -1048,12 +1171,16 @@
             }
         };
         
-        // Brush parser
+        // Brush parser with memory cleanup
         const BrushParser = {
+            blobUrls: [],
             async parse(files) {
                 Logger.info('Parsing files for brushes...');
                 const brushes = [];
                 const usedNames = new Set();
+                
+                // Cleanup previous blob URLs
+                this.cleanup();
                 
                 for (const file of files) {
                     try {
@@ -1080,6 +1207,9 @@
             async createBrushFromPNG(file, usedNames) {
                 try {
                     const processedImage = await ImageProcessor.processImage(file.content);
+                    if (processedImage.startsWith('blob:')) {
+                        this.blobUrls.push(processedImage);
+                    }
                     const name = this.getUniqueName(file.name.replace(/\.[^/.]+$/, ""), usedNames);
                     return {
                         name: name,
@@ -1087,9 +1217,11 @@
                     };
                 } catch (error) {
                     Logger.warning(`Failed to process image ${file.name}: ${error.message}`);
+                    const placeholder = ImageProcessor.createPlaceholder();
+                    this.blobUrls.push(placeholder);
                     return {
                         name: this.getUniqueName(file.name.replace(/\.[^/.]+$/, ""), usedNames),
-                        tipPNG: ImageProcessor.createPlaceholder()
+                        tipPNG: placeholder
                     };
                 }
             },
@@ -1120,6 +1252,9 @@
                         
                         const pngData = data.slice(pngStart, pngEnd);
                         const processedImage = await ImageProcessor.processImage(pngData);
+                        if (processedImage.startsWith('blob:')) {
+                            this.blobUrls.push(processedImage);
+                        }
                         const name = this.getUniqueName(file.name.replace('.abr', ''), usedNames);
                         return {
                             name: name,
@@ -1127,16 +1262,20 @@
                         };
                     } else {
                         Logger.warning(`No PNG data found in ABR file: ${file.name}`);
+                        const placeholder = ImageProcessor.createPlaceholder();
+                        this.blobUrls.push(placeholder);
                         return {
                             name: this.getUniqueName(file.name.replace('.abr', ''), usedNames),
-                            tipPNG: ImageProcessor.createPlaceholder()
+                            tipPNG: placeholder
                         };
                     }
                 } catch (error) {
                     Logger.warning(`Failed to process ABR ${file.name}: ${error.message}`);
+                    const placeholder = ImageProcessor.createPlaceholder();
+                    this.blobUrls.push(placeholder);
                     return {
                         name: this.getUniqueName(file.name.replace('.abr', ''), usedNames),
-                        tipPNG: ImageProcessor.createPlaceholder()
+                        tipPNG: placeholder
                     };
                 }
             },
@@ -1150,6 +1289,26 @@
                 }
                 usedNames.add(finalName);
                 return finalName;
+            },
+            cleanup() {
+                // Revoke all blob URLs
+                if (this.blobUrls) {
+                    this.blobUrls.forEach(url => {
+                        if (url && url.startsWith('blob:')) {
+                            URL.revokeObjectURL(url);
+                        }
+                    });
+                    this.blobUrls = [];
+                }
+                
+                // Also cleanup brush images
+                if (AppState.brushes) {
+                    AppState.brushes.forEach(brush => {
+                        if (brush.tipPNG && brush.tipPNG.startsWith('blob:')) {
+                            URL.revokeObjectURL(brush.tipPNG);
+                        }
+                    });
+                }
             }
         };
         
@@ -1168,8 +1327,9 @@
                         throw new Error('Could not find primary node in template');
                     }
                     
-                    // Update brush name
-                    db.run("UPDATE Node SET NodeName = ? WHERE _PW_ID = ?", [brush.name, nodeInfo.node_id]);
+                    // Update brush name with SQL injection protection
+                    const sanitizedName = brush.name.replace(/[^a-zA-Z0-9\s\-_]/g, '');
+                    db.run("UPDATE Node SET NodeName = ? WHERE _PW_ID = ?", [sanitizedName, nodeInfo.node_id]);
                     
                     // Get and update image data
                     let imageData;
@@ -1180,7 +1340,7 @@
                             imageData = new Uint8Array(atob(base64Data).split('').map(c => c.charCodeAt(0)));
                         } else {
                             // For blob URLs
-                            const response = await fetch(brush.tipPNG);
+                            const response = await fetch(brush.tipPNG, { signal: AppState.abortController?.signal });
                             imageData = new Uint8Array(await response.arrayBuffer());
                         }
                     } catch (error) {
@@ -1400,7 +1560,7 @@
             }
         };
         
-        // Main converter
+        // Main converter with batch processing and cancellation
         const Converter = {
             async convertAll() {
                 if (AppState.converting) {
@@ -1409,13 +1569,21 @@
                 }
                 
                 AppState.converting = true;
+                AppState.abortController = new AbortController();
                 UI.disableConvertButton();
+                UI.elements.cancelBtn.disabled = false;
                 UI.showProgress(0);
+                UI.elements.failedBrushesContainer.style.display = 'none';
                 
                 try {
+                    // Input validation
+                    const packageName = document.getElementById('packageName').value.trim() || 'Converted_Brushes';
+                    if (packageName.length > 100) {
+                        throw new Error('Package name is too long (maximum 100 characters)');
+                    }
+                    
                     // Get UI settings
                     const format = UI.elements.outputFormat.value;
-                    const packageName = document.getElementById('packageName').value || 'Converted_Brushes';
                     const authorName = document.getElementById('authorName').value || 'Artist';
                     const compressionLevel = parseInt(document.getElementById('compressionLevel').value);
                     
@@ -1447,43 +1615,70 @@
                     const zip = new JSZip();
                     const zipFolder = zip.folder(UI.sanitizeName(packageName));
                     
-                    // Convert each brush
+                    // Convert each brush with batch processing
                     AppState.stats.brushesConverted = 0;
+                    const failedBrushes = [];
+                    const batchSize = 5; // Process 5 brushes at a time
                     
-                    for (let i = 0; i < brushes.length; i++) {
-                        const brush = brushes[i];
-                        const progress = Math.round(((i + 1) / brushes.length) * 100);
-                        UI.showProgress(progress);
-                        UI.showStatus(`Converting brush ${i + 1} of ${brushes.length}: ${brush.name}`, 'info');
-                        
-                        try {
-                            if (format === 'sut') {
-                                // Convert to SUT format
-                                if (!AppState.templateLoaded) {
-                                    throw new Error('SUT template not loaded. Please load a template first.');
-                                }
-                                
-                                const sutBlob = await SUTConverter.createSUT(brush, params);
-                                zipFolder.file(`${UI.sanitizeName(brush.name)}.sut`, sutBlob);
-                            } else {
-                                // Export as PNG only
-                                const response = await fetch(brush.tipPNG);
-                                const blob = await response.blob();
-                                zipFolder.file(`${UI.sanitizeName(brush.name)}.png`, blob);
-                            }
-                            
-                            AppState.stats.brushesConverted++;
-                            UI.updateStats();
-                            Logger.success(`Converted brush: ${brush.name}`);
-                            
-                        } catch (error) {
-                            Logger.error(`Failed to convert "${brush.name}": ${error.message}`);
-                            // Continue with next brush
+                    for (let batchStart = 0; batchStart < brushes.length; batchStart += batchSize) {
+                        // Check if conversion was cancelled
+                        if (AppState.abortController.signal.aborted) {
+                            throw new DOMException('Conversion cancelled by user', 'AbortError');
                         }
                         
-                        // Allow UI to update
-                        await new Promise(resolve => setTimeout(resolve, 10));
+                        const batchEnd = Math.min(batchStart + batchSize, brushes.length);
+                        const batchBrushes = brushes.slice(batchStart, batchEnd);
+                        
+                        for (let i = 0; i < batchBrushes.length; i++) {
+                            const brush = batchBrushes[i];
+                            const brushIndex = batchStart + i;
+                            const progress = Math.round(((brushIndex + 1) / brushes.length) * 100);
+                            UI.showProgress(progress);
+                            UI.showStatus(`Converting brush ${brushIndex + 1} of ${brushes.length}: ${brush.name}`, 'info');
+                            
+                            // Check if conversion was cancelled
+                            if (AppState.abortController.signal.aborted) {
+                                throw new DOMException('Conversion cancelled by user', 'AbortError');
+                            }
+                            
+                            try {
+                                if (format === 'sut') {
+                                    // Convert to SUT format
+                                    if (!AppState.templateLoaded) {
+                                        throw new Error('SUT template not loaded. Please load a template first.');
+                                    }
+                                    
+                                    const sutBlob = await SUTConverter.createSUT(brush, params);
+                                    zipFolder.file(`${UI.sanitizeName(brush.name)}.sut`, sutBlob);
+                                } else {
+                                    // Export as PNG only
+                                    const response = await fetch(brush.tipPNG, { signal: AppState.abortController.signal });
+                                    const blob = await response.blob();
+                                    zipFolder.file(`${UI.sanitizeName(brush.name)}.png`, blob);
+                                }
+                                
+                                AppState.stats.brushesConverted++;
+                                UI.updateStats();
+                                Logger.success(`Converted brush: ${brush.name}`);
+                                
+                            } catch (error) {
+                                if (error.name === 'AbortError') {
+                                    throw error; // Re-throw abort errors
+                                }
+                                Logger.error(`Failed to convert "${brush.name}": ${error.message}`);
+                                failedBrushes.push({ name: brush.name, error: error.message });
+                            }
+                        }
+                        
+                        // Cleanup memory between batches
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        if (batchEnd < brushes.length) {
+                            UI.showStatus(`Processed ${batchEnd} of ${brushes.length} brushes...`, 'info');
+                        }
                     }
+                    
+                    // Show failed conversions if any
+                    UI.showFailedBrushes(failedBrushes);
                     
                     // Finalize ZIP
                     UI.showStatus('Creating ZIP archive...', 'info');
@@ -1514,14 +1709,21 @@
                     UI.showProgress(100);
                     
                 } catch (error) {
-                    const errorMsg = `Conversion failed: ${error.message}`;
-                    Logger.error(errorMsg);
-                    UI.showStatus(errorMsg, 'error');
-                    console.error(error);
+                    if (error.name === 'AbortError') {
+                        Logger.info('Conversion cancelled by user');
+                        UI.showStatus('Conversion cancelled', 'info');
+                    } else {
+                        const errorMsg = `Conversion failed: ${error.message}`;
+                        Logger.error(errorMsg);
+                        UI.showStatus(errorMsg, 'error');
+                        console.error(error);
+                    }
                 } finally {
                     AppState.converting = false;
+                    AppState.abortController = null;
                     UI.showProgress(0);
                     UI.elements.progressBar.classList.remove('show');
+                    UI.elements.cancelBtn.disabled = true;
                     
                     // Re-enable convert button if we have files and template
                     if (AppState.filesLoaded && AppState.files.length > 0 && AppState.templateLoaded) {
@@ -1530,6 +1732,11 @@
                 }
             }
         };
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            BrushParser.cleanup();
+        });
         
         // Initial status
         document.addEventListener('DOMContentLoaded', () => {
