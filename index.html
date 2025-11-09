@@ -1,11 +1,12 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CSP Brush Converter Pro - Ultimate V6</title>
-    <meta name="description" content="Convert Procreate, Photoshop ABR, and custom brushes to Clip Studio Paint format with advanced parameter mapping">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
+    <title>CSP Brush Converter Pro - Fixed Version</title>
+    <meta name="description" content="Convert Procreate, Photoshop ABR, and custom brushes to Clip Studio Paint format">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
@@ -58,10 +59,6 @@
         .warning-box{margin-top:10px;padding:10px;background:#fff3cd;border-radius:5px;font-size:.85em;color:#856404}
         .footer{text-align:center;padding:20px;margin-top:30px;color:rgba(255,255,255,.7);font-size:.9em}
         .import-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:15px}
-        .compat-warning {background:#fff8e1;padding:15px;border-radius:8px;margin:15px 0;border-left:4px solid #ffc107;font-size:0.95em;color:#5d4037;display:none}
-        .worker-status {display:flex;align-items:center;gap:8px;margin-top:5px;font-size:0.85em;color:#495057}
-        .worker-dot {width:8px;height:8px;border-radius:50%;background:#28a745}
-        .abr-parser-info {font-size:0.85em;color:#1565c0;margin-top:5px}
         @media(max-width:768px){.controls{grid-template-columns:1fr}.file-input-group{flex-direction:column}.import-options{grid-template-columns:1fr}}
     </style>
 </head>
@@ -69,13 +66,13 @@
     <div class="container">
         <div class="header">
             <h1>CSP Brush Converter Pro</h1>
-            <p>Advanced conversion with parameter mapping and CSP version control</p>
+            <p>Fixed version - Import and convert brushes to Clip Studio Paint format</p>
         </div>
         <div class="content">
             <div id="dropZone">
                 <svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z"/></svg>
                 <h2 style="color:#667eea;margin-bottom:10px">Drop Files Here</h2>
-                <p style="color:#6c757d;margin-bottom:20px">Supports: .brushset, .zip, .abr (v1-6+), .brush, folders</p>
+                <p style="color:#6c757d;margin-bottom:20px">Supports: .brushset, .zip, .abr, .brush, .png</p>
                 
                 <div class="import-options">
                     <button class="btn" id="importFilesBtn">Import Files</button>
@@ -92,7 +89,6 @@
                 <div class="stat-card"><div class="value" id="fileCount">0</div><div class="label">Files Loaded</div></div>
                 <div class="stat-card"><div class="value" id="brushCount">0</div><div class="label">Brushes Found</div></div>
                 <div class="stat-card"><div class="value" id="convertedCount">0</div><div class="label">Converted</div></div>
-                <div class="stat-card"><div class="value" id="textureCount">0</div><div class="label">Textures</div></div>
             </div>
 
             <div class="controls">
@@ -101,20 +97,8 @@
                     <select id="targetFormat">
                         <option value="sut">Clip Studio Paint (.sut) - Full</option>
                         <option value="png">Brush Tip PNGs Only</option>
-                        <option value="json">JSON + PNGs (Dev)</option>
                     </select>
                     <div class="format-info" id="formatInfo"></div>
-                </div>
-                <div class="control-group">
-                    <label for="cspVersion">CSP Version Compatibility</label>
-                    <select id="cspVersion">
-                        <option value="1.0">CSP 1.0-1.11 (Legacy)</option>
-                        <option value="1.12" selected>CSP 1.12+ (Current)</option>
-                        <option value="beta">CSP Beta (Experimental)</option>
-                    </select>
-                    <div class="compat-warning" id="compatWarning">
-                        <strong>Legacy Mode Active:</strong> Some advanced brush parameters will be simplified for CSP 1.0-1.11 compatibility
-                    </div>
                 </div>
                 <div class="control-group">
                     <label for="packageName">Package Name</label>
@@ -127,25 +111,10 @@
                 <div class="control-group">
                     <label for="compressionLevel">Compression</label>
                     <select id="compressionLevel">
-                        <option value="1">Fast (Low CPU)</option>
+                        <option value="1">Fast</option>
                         <option value="6" selected>Balanced</option>
-                        <option value="9">Maximum (High CPU)</option>
+                        <option value="9">Maximum</option>
                     </select>
-                    <div class="worker-status">
-                        <span class="worker-dot" id="workerStatusDot"></span>
-                        <span id="workerStatusText">Worker ready</span>
-                    </div>
-                </div>
-                <div class="control-group">
-                    <label>ABR Parsing Mode</label>
-                    <select id="abrParserMode">
-                        <option value="auto">Auto-Detect (Recommended)</option>
-                        <option value="v6">Photoshop 2021+ (v6+)</option>
-                        <option value="legacy">Legacy Photoshop (v1-5)</option>
-                    </select>
-                    <div class="abr-parser-info">
-                        <strong>Pro Tip:</strong> Use "Legacy" mode for brushes created before 2020
-                    </div>
                 </div>
             </div>
 
@@ -155,7 +124,7 @@
             <div id="log"></div>
         </div>
         <div class="footer">
-            <p>CSP Brush Converter Pro - Ultimate V6 | 100% client-side processing | ABR parser updated for 2025 compatibility</p>
+            <p>CSP Brush Converter Pro - Fixed Version | All processing happens in your browser - no files are uploaded</p>
         </div>
     </div>
 
@@ -177,8 +146,7 @@
                 filesLoaded: 0,
                 brushesParsed: 0, 
                 brushesConverted: 0, 
-                placeholderTips: 0, 
-                texturesFound: 0
+                placeholderTips: 0
             }
         };
 
@@ -201,57 +169,21 @@
                 fileCount: document.getElementById('fileCount'),
                 brushCount: document.getElementById('brushCount'),
                 convertedCount: document.getElementById('convertedCount'),
-                textureCount: document.getElementById('textureCount'),
                 formatInfo: document.getElementById('formatInfo'),
-                targetFormat: document.getElementById('targetFormat'),
-                cspVersion: document.getElementById('cspVersion'),
-                workerStatusDot: document.getElementById('workerStatusDot'),
-                workerStatusText: document.getElementById('workerStatusText'),
-                compatWarning: document.getElementById('compatWarning')
+                targetFormat: document.getElementById('targetFormat')
             },
             init() {
                 this.e.targetFormat.addEventListener('change', () => {
                     this.updateFormatInfo();
-                    this.updateFormatWarnings();
                 });
                 this.updateFormatInfo();
-                
-                this.e.cspVersion.addEventListener('change', () => {
-                    this.updateCompatibilityWarning();
-                });
-                this.updateCompatibilityWarning();
             },
             updateFormatInfo() {
                 const info = {
-                    'sut': 'Full .sut with real CSP schema (Manager + Node + MaterialFile)',
-                    'png': 'Tip PNGs only', 
-                    'json': 'Dev export'
+                    'sut': 'Full CSP brush files with metadata',
+                    'png': 'Brush tip images only'
                 };
                 this.e.formatInfo.textContent = info[this.e.targetFormat.value] || '';
-            },
-            updateFormatWarnings() {
-                const warning = document.getElementById('formatWarning');
-                if (warning) warning.remove();
-                if (this.e.targetFormat.value === 'png') {
-                    const box = document.createElement('div');
-                    box.id = 'formatWarning';
-                    box.className = 'warning-box';
-                    box.textContent = 'Warning: PNG format loses all brush settings!';
-                    this.e.formatInfo.parentNode.insertBefore(box, this.e.formatInfo.nextSibling);
-                }
-            },
-            updateCompatibilityWarning() {
-                this.e.compatWarning.style.display = (this.e.cspVersion.value === '1.0') ? 'block' : 'none';
-            },
-            updateWorkerStatus(status) {
-                const colors = {
-                    ready: '#28a745',
-                    busy: '#ffc107',
-                    error: '#dc3545'
-                };
-                this.e.workerStatusDot.style.background = colors[status] || colors.ready;
-                this.e.workerStatusText.textContent = status === 'ready' ? 'Worker ready' : 
-                                                     status === 'busy' ? 'Processing...' : 'Worker error';
             },
             sanitizeName(n) {
                 return n.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
@@ -273,7 +205,6 @@
                 this.e.fileCount.textContent = AppState.stats.filesLoaded;
                 this.e.brushCount.textContent = AppState.stats.brushesParsed;
                 this.e.convertedCount.textContent = AppState.stats.brushesConverted;
-                this.e.textureCount.textContent = AppState.stats.texturesFound;
             },
             enableConvertButton() {
                 this.e.convertBtn.disabled = false;
@@ -294,10 +225,10 @@
                 UI.e.log.appendChild(e);
                 UI.e.log.scrollTop = UI.e.log.scrollHeight;
             },
-            info: m => this.log(m, 'info'),
-            success: m => this.log(m, 'success'),
-            error: m => this.log(m, 'error'),
-            warning: m => this.log(m, 'warning'),
+            info(m) { this.log(m, 'info'); },
+            success(m) { this.log(m, 'success'); },
+            error(m) { this.log(m, 'error'); },
+            warning(m) { this.log(m, 'warning'); },
             clear() { UI.e.log.innerHTML = ''; }
         };
 
@@ -325,70 +256,90 @@
                     return v.toString(16);
                 });
                 return this.uuidToBlob(uuid);
-            },
-            generateUuid: function() {
-                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                    const r = Math.random() * 16 | 0;
-                    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-                    return v.toString(16);
-                });
             }
         };
 
         /*=====================================================================
-          IMAGE VALIDATOR
+          IMAGE VALIDATOR - FIXED VERSION
         =====================================================================*/
         const ImageValidator = {
             async validateAlphaAndOptimise(data) {
                 return new Promise((resolve, reject) => {
-                    const blob = new Blob([data], { type: 'image/png' });
-                    const img = new Image();
-                    const url = URL.createObjectURL(blob);
-                    
-                    img.onload = () => {
-                        URL.revokeObjectURL(url);
-                        const canvas = document.createElement('canvas');
-                        canvas.width = 512;
-                        canvas.height = 512;
-                        const ctx = canvas.getContext('2d');
+                    try {
+                        // Create blob from the data
+                        const blob = new Blob([data], { type: 'image/png' });
+                        const img = new Image();
+                        const url = URL.createObjectURL(blob);
                         
-                        ctx.drawImage(img, 0, 0, 512, 512);
-                        const imageData = ctx.getImageData(0, 0, 512, 512);
-                        
-                        let hasAlpha = false;
-                        for (let i = 3; i < imageData.data.length; i += 4) {
-                            if (imageData.data[i] < 255) {
-                                hasAlpha = true;
-                                break;
-                            }
-                        }
-                        
-                        if (!hasAlpha) {
-                            Logger.warning('No alpha channel detected - adding transparency');
+                        img.onload = () => {
+                            URL.revokeObjectURL(url);
+                            
+                            // Create canvas for manipulation
+                            const canvas = document.createElement('canvas');
+                            canvas.width = Math.min(img.width, 512);
+                            canvas.height = Math.min(img.height, 512);
+                            const ctx = canvas.getContext('2d');
+                            
+                            // Draw image to canvas
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                            
+                            // Get image data for alpha check
+                            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                            let hasAlpha = false;
+                            
                             for (let i = 3; i < imageData.data.length; i += 4) {
-                                imageData.data[i] = 255 - imageData.data[i - 3];
-                                imageData.data[i - 3] = imageData.data[i - 2] = imageData.data[i - 1] = 255;
+                                if (imageData.data[i] < 255) {
+                                    hasAlpha = true;
+                                    break;
+                                }
                             }
-                            ctx.putImageData(imageData, 0, 0);
-                        }
+                            
+                            // If no alpha channel, add one based on luminance
+                            if (!hasAlpha) {
+                                Logger.warning('No alpha channel detected - adding transparency based on luminance');
+                                
+                                for (let i = 0; i < imageData.data.length; i += 4) {
+                                    // Convert to grayscale for alpha
+                                    const r = imageData.data[i];
+                                    const g = imageData.data[i + 1];
+                                    const b = imageData.data[i + 2];
+                                    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+                                    
+                                    // Set RGB to white, alpha based on luminance
+                                    imageData.data[i] = 255;     // R
+                                    imageData.data[i + 1] = 255; // G
+                                    imageData.data[i + 2] = 255; // B
+                                    imageData.data[i + 3] = 255 - Math.round(luminance); // A (inverted)
+                                }
+                                
+                                ctx.putImageData(imageData, 0, 0);
+                            }
+                            
+                            // Convert back to blob
+                            canvas.toBlob(resultBlob => {
+                                if (resultBlob) {
+                                    resultBlob.arrayBuffer().then(resolve).catch(reject);
+                                } else {
+                                    reject(new Error('Failed to convert canvas to blob'));
+                                }
+                            }, 'image/png', 0.9); // 90% quality for optimization
+                        };
                         
-                        canvas.toBlob(blob => {
-                            blob.arrayBuffer().then(resolve).catch(reject);
-                        }, 'image/png');
-                    };
-                    
-                    img.onerror = () => {
-                        URL.revokeObjectURL(url);
-                        reject(new Error('Failed to load image'));
-                    };
-                    
-                    img.src = url;
+                        img.onerror = () => {
+                            URL.revokeObjectURL(url);
+                            reject(new Error('Failed to load image'));
+                        };
+                        
+                        img.src = url;
+                    } catch (error) {
+                        reject(error);
+                    }
                 });
             }
         };
 
         /*=====================================================================
-          FILE MANAGER
+          FILE MANAGER - FIXED VERSION
         =====================================================================*/
         const FileManager = {
             ZIP_EXTENSIONS: ['zip', 'brushset', 'brush'],
@@ -400,20 +351,21 @@
                 AppState.files = [];
                 AppState.stats.filesLoaded = 0;
                 
-                const promises = [];
-                for (const file of files) {
-                    const ext = file.name.split('.').pop().toLowerCase();
-                    if (file.size === 0) continue;
-                    
-                    if (this.ZIP_EXTENSIONS.includes(ext)) {
-                        promises.push(this.extractZip(file));
-                    } else {
-                        promises.push(this.addFile(file));
-                    }
-                }
-                
                 try {
-                    await Promise.all(promises);
+                    for (const file of files) {
+                        const ext = file.name.split('.').pop().toLowerCase();
+                        if (file.size === 0) {
+                            Logger.warning(`Skipping empty file: ${file.name}`);
+                            continue;
+                        }
+                        
+                        if (this.ZIP_EXTENSIONS.includes(ext)) {
+                            await this.extractZip(file);
+                        } else {
+                            await this.addFile(file);
+                        }
+                    }
+                    
                     AppState.stats.filesLoaded = AppState.files.length;
                     AppState.filesLoaded = true;
                     UI.updateStats();
@@ -422,8 +374,10 @@
                     if (AppState.files.length > 0 && SQL_READY) {
                         UI.enableConvertButton();
                         UI.showStatus('Ready to convert', 'success');
+                    } else if (!SQL_READY) {
+                        UI.showStatus('Waiting for SQL engine to load...', 'info');
                     } else {
-                        UI.showStatus(!SQL_READY ? 'Waiting for SQL engine...' : 'No valid files loaded', 'error');
+                        UI.showStatus('No valid files loaded', 'error');
                     }
                 } catch (error) {
                     Logger.error('Error loading files: ' + error.message);
@@ -432,40 +386,70 @@
             },
             
             async addFile(file) {
+                const maxSize = 50 * 1024 * 1024; // 50MB limit
+                
+                if (file.size > maxSize) {
+                    Logger.warning(`File ${file.name} is too large (${(file.size / 1024 / 1024).toFixed(2)}MB), skipping`);
+                    return;
+                }
+                
                 try {
-                    const content = new Uint8Array(await file.arrayBuffer());
+                    const arrayBuffer = await file.arrayBuffer();
+                    const content = new Uint8Array(arrayBuffer);
+                    
                     AppState.files.push({
                         name: file.name,
                         path: file.webkitRelativePath || file.name,
-                        content: content
+                        content: content,
+                        size: file.size
                     });
+                    
+                    Logger.info(`Added file: ${file.name} (${(file.size / 1024).toFixed(1)}KB)`);
                 } catch (error) {
-                    Logger.warning(`Failed to read file: ${file.name}`);
+                    Logger.warning(`Failed to read file: ${file.name} - ${error.message}`);
                 }
             },
             
             async extractZip(file) {
                 Logger.info(`Extracting ZIP: ${file.name}`);
+                
+                if (file.size > 100 * 1024 * 1024) { // 100MB limit for ZIPs
+                    Logger.warning(`ZIP file ${file.name} is too large (${(file.size / 1024 / 1024).toFixed(2)}MB), skipping`);
+                    return;
+                }
+                
                 try {
-                    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+                    const arrayBuffer = await file.arrayBuffer();
+                    const zip = await JSZip.loadAsync(arrayBuffer);
                     const promises = [];
                     
+                    let fileCount = 0;
                     zip.forEach((relativePath, zipEntry) => {
                         if (!zipEntry.dir) {
+                            fileCount++;
                             promises.push(
                                 zipEntry.async('uint8array').then(content => {
+                                    // Skip files larger than 10MB inside ZIP
+                                    if (content.length > 10 * 1024 * 1024) {
+                                        Logger.warning(`Skipping large file in ZIP: ${relativePath}`);
+                                        return;
+                                    }
+                                    
                                     AppState.files.push({
                                         name: relativePath.split('/').pop(),
                                         path: relativePath,
-                                        content: content
+                                        content: content,
+                                        size: content.length
                                     });
+                                }).catch(error => {
+                                    Logger.warning(`Failed to extract ${relativePath} from ZIP: ${error.message}`);
                                 })
                             );
                         }
                     });
                     
-                    await Promise.all(promises);
-                    Logger.success(`Extracted ${promises.length} files from ${file.name}`);
+                    await Promise.allSettled(promises);
+                    Logger.success(`Extracted ${AppState.files.length} files from ${file.name}`);
                 } catch (error) {
                     Logger.error(`ZIP extraction failed: ${error.message}`);
                 }
@@ -473,303 +457,7 @@
         };
 
         /*=====================================================================
-          ADVANCED ABR PARSER
-        =====================================================================*/
-        const AbrParser = {
-            async parse(file, options = {}) {
-                const parserMode = options.mode || 'auto';
-                Logger.info(`Parsing ABR with ${parserMode} mode: ${file.name}`);
-                
-                try {
-                    if (parserMode === 'auto' || parserMode === 'v6') {
-                        try {
-                            return await this.parseV6(file, options);
-                        } catch (v6Error) {
-                            if (parserMode === 'auto') {
-                                Logger.warning('v6 parsing failed, falling back to legacy mode');
-                                return await this.parseLegacy(file, options);
-                            }
-                            throw v6Error;
-                        }
-                    } else {
-                        return await this.parseLegacy(file, options);
-                    }
-                } catch (error) {
-                    Logger.error(`ABR parsing failed: ${error.message}`);
-                    throw new Error(`ABR parsing failed: ${error.message.substring(0, 50)}`);
-                }
-            },
-            
-            async parseV6(file, options) {
-                const view = new DataView(file.content.buffer);
-                
-                // Validate signature
-                const signature = String.fromCharCode(
-                    view.getUint8(0),
-                    view.getUint8(1),
-                    view.getUint8(2),
-                    view.getUint8(3)
-                );
-                
-                if (signature !== '8BIM') {
-                    throw new Error('Invalid Photoshop ABR v6 signature');
-                }
-                
-                // Skip to brush count
-                let offset = 16;
-                const version = view.getUint32(offset, false);
-                offset += 4;
-                
-                if (version < 6) {
-                    throw new Error(`ABR version ${version} not supported in v6 mode`);
-                }
-                
-                const brushCount = view.getUint32(offset, false);
-                offset += 4;
-                
-                Logger.info(`Found ${brushCount} brushes in v6 file`);
-                
-                const brushes = [];
-                for (let i = 0; i < brushCount; i++) {
-                    if (offset >= view.byteLength) break;
-                    
-                    // Read brush name
-                    const nameLength = view.getUint32(offset, false);
-                    offset += 4;
-                    
-                    let brushName = '';
-                    for (let j = 0; j < nameLength; j++) {
-                        brushName += String.fromCharCode(view.getUint8(offset + j));
-                    }
-                    offset += nameLength;
-                    
-                    // Skip 4 bytes (unknown data)
-                    offset += 4;
-                    
-                    // Find PNG signature
-                    let pngOffset = -1;
-                    for (let j = offset; j < Math.min(offset + 1000, view.byteLength - 8); j++) {
-                        if (
-                            view.getUint8(j) === 0x89 &&
-                            view.getUint8(j+1) === 0x50 &&
-                            view.getUint8(j+2) === 0x4E &&
-                            view.getUint8(j+3) === 0x47
-                        ) {
-                            pngOffset = j;
-                            break;
-                        }
-                    }
-                    
-                    if (pngOffset === -1) {
-                        Logger.warning(`Brush "${brushName}" missing PNG data`);
-                        continue;
-                    }
-                    
-                    // Extract PNG data
-                    let pngEnd = pngOffset;
-                    while (pngEnd < view.byteLength - 4) {
-                        if (
-                            view.getUint8(pngEnd) === 0x49 &&
-                            view.getUint8(pngEnd+1) === 0x45 &&
-                            view.getUint8(pngEnd+2) === 0x4E &&
-                            view.getUint8(pngEnd+3) === 0x44
-                        ) {
-                            pngEnd += 8;
-                            break;
-                        }
-                        pngEnd++;
-                    }
-                    
-                    if (pngEnd <= pngOffset) {
-                        Logger.warning(`Incomplete PNG for brush "${brushName}"`);
-                        continue;
-                    }
-                    
-                    const pngBuffer = file.content.slice(pngOffset, pngEnd);
-                    const pngBlob = new Blob([pngBuffer], { type: 'image/png' });
-                    const pngUrl = URL.createObjectURL(pngBlob);
-                    
-                    brushes.push({
-                        name: UI.sanitizeName(brushName || `brush_${i+1}`),
-                        brushSize: 50,
-                        opacity: 80,
-                        spacing: 25,
-                        hardness: 50,
-                        angle: 0,
-                        density: 100,
-                        tipPNG: pngUrl,
-                        pressureCurves: {},
-                        abrVersion: 6,
-                        originalIndex: i
-                    });
-                    
-                    offset = pngEnd;
-                }
-                
-                return brushes;
-            },
-            
-            async parseLegacy(file, options) {
-                // Legacy parser for ABR v1-v5
-                const pngSignatures = [
-                    [0x89, 0x50, 0x4E, 0x47], // PNG
-                    [0xFF, 0xD8, 0xFF]        // JPEG
-                ];
-                
-                let pngOffset = -1;
-                for (let i = 0; i < file.content.length - 4; i++) {
-                    const sig = pngSignatures.find(sig => 
-                        sig.every((byte, j) => file.content[i + j] === byte)
-                    );
-                    
-                    if (sig) {
-                        pngOffset = i;
-                        break;
-                    }
-                }
-                
-                if (pngOffset === -1) {
-                    throw new Error('No image data found in legacy ABR file');
-                }
-                
-                // Extract until IEND marker
-                let pngEnd = pngOffset;
-                while (pngEnd < file.content.length - 4) {
-                    if (
-                        file.content[pngEnd] === 0x49 &&
-                        file.content[pngEnd+1] === 0x45 &&
-                        file.content[pngEnd+2] === 0x4E &&
-                        file.content[pngEnd+3] === 0x44
-                    ) {
-                        pngEnd += 8;
-                        break;
-                    }
-                    pngEnd++;
-                }
-                
-                const pngBuffer = file.content.slice(pngOffset, pngEnd);
-                const pngBlob = new Blob([pngBuffer], { type: 'image/png' });
-                const pngUrl = URL.createObjectURL(pngBlob);
-                
-                return [{
-                    name: UI.sanitizeName(file.name.replace(/\.[^/.]+$/, "")),
-                    brushSize: 50,
-                    opacity: 80,
-                    spacing: 25,
-                    hardness: 50,
-                    angle: 0,
-                    density: 100,
-                    tipPNG: pngUrl,
-                    pressureCurves: {},
-                    abrVersion: 'legacy'
-                }];
-            }
-        };
-
-        /*=====================================================================
-          SUT CONVERTER
-        =====================================================================*/
-        const SUTConverter = {
-            async createSUT(brush) {
-                const db = new SQL.Database();
-                
-                try {
-                    db.exec("BEGIN TRANSACTION");
-                    
-                    // Create CSP schema tables
-                    db.run(`CREATE TABLE Manager(
-                        _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                        ToolType INTEGER,
-                        Version INTEGER,
-                        RootUuid BLOB,
-                        CurrentNodeUuid BLOB
-                    )`);
-                    
-                    db.run(`CREATE TABLE Node(
-                        _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                        NodeUuid BLOB,
-                        NodeType INTEGER,
-                        NodeName TEXT,
-                        MaterialUuid TEXT
-                    )`);
-                    
-                    db.run(`CREATE TABLE MaterialFile(
-                        _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                        FileData BLOB,
-                        MaterialUuid TEXT
-                    )`);
-                    
-                    // Generate UUIDs
-                    const rootUuid = UUIDUtils.generateUuidBlob();
-                    const nodeUuid = UUIDUtils.generateUuidBlob();
-                    const materialUuid = UUIDUtils.generateUuidBlob();
-                    
-                    // Insert manager record
-                    db.run(`INSERT INTO Manager (ToolType, Version, RootUuid, CurrentNodeUuid) 
-                           VALUES (2, 1, ?, ?)`, [rootUuid, nodeUuid]);
-                    
-                    // Insert node record
-                    db.run(`INSERT INTO Node (NodeUuid, NodeType, NodeName, MaterialUuid) 
-                           VALUES (?, 2, ?, ?)`, 
-                           [nodeUuid, brush.name, UUIDUtils.blobToUuid(materialUuid)]);
-                    
-                    // Process image
-                    let tipData;
-                    if (brush.tipPNG) {
-                        try {
-                            const response = await fetch(brush.tipPNG);
-                            tipData = await response.arrayBuffer();
-                        } catch (error) {
-                            Logger.warning(`Image loading failed: ${error.message}`);
-                            tipData = await this.createPlaceholderTipBuffer();
-                        }
-                    } else {
-                        tipData = await this.createPlaceholderTipBuffer();
-                    }
-                    
-                    // Insert material
-                    db.run(`INSERT INTO MaterialFile (FileData, MaterialUuid) 
-                           VALUES (?, ?)`, 
-                           [new Uint8Array(tipData), UUIDUtils.blobToUuid(materialUuid)]);
-                    
-                    db.exec("COMMIT");
-                    
-                    const exported = db.export();
-                    db.close();
-                    
-                    return new Blob([exported], { type: 'application/octet-stream' });
-                } catch (error) {
-                    db.exec("ROLLBACK");
-                    db.close();
-                    throw error;
-                }
-            },
-            
-            async createPlaceholderTipBuffer() {
-                const canvas = document.createElement('canvas');
-                canvas.width = canvas.height = 512;
-                const ctx = canvas.getContext('2d');
-                
-                const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 200);
-                gradient.addColorStop(0, 'rgba(255,255,255,1)');
-                gradient.addColorStop(0.7, 'rgba(200,200,200,1)');
-                gradient.addColorStop(1, 'rgba(255,255,255,0)');
-                
-                ctx.fillStyle = gradient;
-                ctx.fillRect(0, 0, 512, 512);
-                
-                return new Promise(resolve => {
-                    canvas.toBlob(blob => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result);
-                        reader.readAsArrayBuffer(blob);
-                    }, 'image/png');
-                });
-            }
-        };
-
-        /*=====================================================================
-          BRUSH PARSER
+          BRUSH PARSER - FIXED VERSION
         =====================================================================*/
         const BrushParser = {
             blobUrls: [],
@@ -780,42 +468,173 @@
                 
                 const brushes = [];
                 const usedNames = new Set();
-                const abrOptions = {
-                    mode: document.getElementById('abrParserMode').value
-                };
                 
-                for (const file of files) {
+                // Filter to only process relevant files
+                const brushFiles = files.filter(file => {
                     const ext = file.name.toLowerCase();
-                    
+                    return ext.endsWith('.png') || ext.endsWith('.abr') || ext.endsWith('.json');
+                });
+                
+                if (brushFiles.length === 0) {
+                    Logger.warning('No brush files found in uploaded files');
+                    return brushes;
+                }
+                
+                for (const file of brushFiles) {
                     try {
-                        if (ext.endsWith('.abr')) {
-                            const abrBrushes = await AbrParser.parse(file, abrOptions);
-                            brushes.push(...abrBrushes.map(b => ({
-                                ...b,
-                                name: this.getUniqueName(b.name, usedNames)
-                            })));
-                        } 
-                        else if (ext.endsWith('.png') || ext.endsWith('.jpg') || ext.endsWith('.jpeg')) {
-                            if (file.name.includes('tip') || file.name.includes('shape') || file.name.includes('brush')) {
-                                const brush = await this.createBrushFromPNG(file, usedNames);
-                                brushes.push(brush);
-                            }
+                        if (file.name.toLowerCase().endsWith('.png')) {
+                            const brush = await this.createBrushFromPNG(file, usedNames);
+                            if (brush) brushes.push(brush);
                         }
-                        else if (ext.endsWith('.json')) {
+                        else if (file.name.toLowerCase().endsWith('.abr')) {
+                            const brush = await this.createBrushFromABR(file, usedNames);
+                            if (brush) brushes.push(brush);
+                        }
+                        else if (file.name.toLowerCase().endsWith('.json')) {
                             const jsonBrushes = await this.parseJSON(file);
-                            brushes.push(...jsonBrushes.map(b => ({
-                                ...b,
-                                name: this.getUniqueName(b.name, usedNames)
-                            })));
+                            brushes.push(...jsonBrushes);
                         }
                     } catch (error) {
-                        Logger.warning(`Skipping problematic file ${file.name}: ${error.message}`);
+                        Logger.warning(`Failed to process ${file.name}: ${error.message}`);
                     }
                 }
                 
                 AppState.stats.brushesParsed = brushes.length;
-                Logger.success(`Parsed ${brushes.length} brushes`);
+                
+                if (brushes.length > 0) {
+                    Logger.success(`Parsed ${brushes.length} brushes`);
+                } else {
+                    Logger.warning('No valid brushes could be parsed from the files');
+                }
+                
                 return brushes;
+            },
+            
+            async createBrushFromPNG(file, usedNames) {
+                try {
+                    const optimized = await ImageValidator.validateAlphaAndOptimise(file.content);
+                    const blob = new Blob([optimized], { type: 'image/png' });
+                    const tipUrl = URL.createObjectURL(blob);
+                    this.blobUrls.push(tipUrl);
+                    
+                    let name = this.getUniqueName(file.name.replace(/\.[^/.]+$/, ""), usedNames);
+                    
+                    return {
+                        name: name,
+                        brushSize: 50,
+                        opacity: 80,
+                        spacing: 25,
+                        hardness: 50,
+                        tipPNG: tipUrl
+                    };
+                } catch (error) {
+                    Logger.warning(`Failed to process PNG ${file.name}: ${error.message}`);
+                    return null;
+                }
+            },
+            
+            async createBrushFromABR(file, usedNames) {
+                // Simple ABR handling - treat as image file
+                try {
+                    // Try to find PNG data in ABR file
+                    const data = file.content;
+                    let pngStart = -1;
+                    
+                    // Look for PNG signature
+                    for (let i = 0; i < data.length - 8; i++) {
+                        if (data[i] === 0x89 && data[i+1] === 0x50 && data[i+2] === 0x4E && data[i+3] === 0x47) {
+                            pngStart = i;
+                            break;
+                        }
+                    }
+                    
+                    if (pngStart !== -1) {
+                        // Found PNG data, extract it
+                        let pngEnd = pngStart;
+                        while (pngEnd < data.length - 8) {
+                            if (data[pngEnd] === 0x49 && data[pngEnd+1] === 0x45 && data[pngEnd+2] === 0x4E && data[pngEnd+3] === 0x44) {
+                                pngEnd += 8; // PNG end marker
+                                break;
+                            }
+                            pngEnd++;
+                        }
+                        
+                        const pngData = data.slice(pngStart, pngEnd);
+                        const optimized = await ImageValidator.validateAlphaAndOptimise(pngData);
+                        const blob = new Blob([optimized], { type: 'image/png' });
+                        const tipUrl = URL.createObjectURL(blob);
+                        this.blobUrls.push(tipUrl);
+                        
+                        let name = this.getUniqueName(file.name.replace(/\.[^/.]+$/, ""), usedNames);
+                        
+                        return {
+                            name: name,
+                            brushSize: 50,
+                            opacity: 80,
+                            spacing: 25,
+                            hardness: 50,
+                            tipPNG: tipUrl
+                        };
+                    } else {
+                        // No PNG found, use placeholder
+                        Logger.warning(`No PNG data found in ABR file ${file.name}, using placeholder`);
+                        return this.createPlaceholderBrush(file, usedNames);
+                    }
+                } catch (error) {
+                    Logger.warning(`Failed to process ABR ${file.name}: ${error.message}`);
+                    return this.createPlaceholderBrush(file, usedNames);
+                }
+            },
+            
+            async parseJSON(file) {
+                try {
+                    const text = new TextDecoder().decode(file.content);
+                    const data = JSON.parse(text);
+                    const brushes = [];
+                    
+                    if (data.name && (data.brushSize || data.size)) {
+                        brushes.push({
+                            name: UI.sanitizeName(data.name),
+                            brushSize: data.brushSize || data.size || 50,
+                            opacity: data.opacity || 80,
+                            spacing: data.spacing || 25,
+                            hardness: data.hardness || 50,
+                            tipPNG: this.createPlaceholderTip()
+                        });
+                    } else if (Array.isArray(data)) {
+                        data.forEach(brush => {
+                            if (brush.name && (brush.brushSize || brush.size)) {
+                                brushes.push({
+                                    name: UI.sanitizeName(brush.name),
+                                    brushSize: brush.brushSize || brush.size || 50,
+                                    opacity: brush.opacity || 80,
+                                    spacing: brush.spacing || 25,
+                                    hardness: brush.hardness || 50,
+                                    tipPNG: this.createPlaceholderTip()
+                                });
+                            }
+                        });
+                    }
+                    
+                    return brushes;
+                } catch (error) {
+                    Logger.warning(`Failed to parse JSON ${file.name}: ${error.message}`);
+                    return [];
+                }
+            },
+            
+            createPlaceholderBrush(file, usedNames) {
+                const tipUrl = this.createPlaceholderTip();
+                let name = this.getUniqueName(file.name.replace(/\.[^/.]+$/, ""), usedNames);
+                
+                return {
+                    name: name,
+                    brushSize: 50,
+                    opacity: 80,
+                    spacing: 25,
+                    hardness: 50,
+                    tipPNG: tipUrl
+                };
             },
             
             getUniqueName(baseName, usedNames) {
@@ -832,59 +651,6 @@
                 return finalName;
             },
             
-            async createBrushFromPNG(file, usedNames) {
-                let tipUrl;
-                try {
-                    const optimized = await ImageValidator.validateAlphaAndOptimise(file.content);
-                    const blob = new Blob([optimized], { type: 'image/png' });
-                    tipUrl = URL.createObjectURL(blob);
-                    this.blobUrls.push(tipUrl);
-                } catch (error) {
-                    Logger.warning(`Image optimization failed: ${error.message}`);
-                    tipUrl = this.createPlaceholderTip();
-                }
-                
-                return {
-                    name: this.getUniqueName(file.name.replace(/\.[^/.]+$/, ""), usedNames),
-                    brushSize: 50,
-                    opacity: 80,
-                    spacing: 25,
-                    hardness: 50,
-                    angle: 0,
-                    density: 100,
-                    tipPNG: tipUrl,
-                    pressureCurves: {}
-                };
-            },
-            
-            async parseJSON(file) {
-                try {
-                    const text = new TextDecoder().decode(file.content);
-                    const data = JSON.parse(text);
-                    const brushes = [];
-                    
-                    if (data.name && data.brushSize) {
-                        brushes.push({
-                            name: data.name,
-                            brushSize: data.brushSize,
-                            opacity: data.opacity,
-                            spacing: data.spacing,
-                            hardness: data.hardness,
-                            tipPNG: this.createPlaceholderTip()
-                        });
-                    } else if (Array.isArray(data)) {
-                        data.forEach(brush => {
-                            if (brush.name) brushes.push(brush);
-                        });
-                    }
-                    
-                    return brushes;
-                } catch (error) {
-                    Logger.warning(`JSON parse error: ${error.message}`);
-                    return [];
-                }
-            },
-            
             createPlaceholderTip() {
                 const canvas = document.createElement('canvas');
                 canvas.width = canvas.height = 512;
@@ -898,27 +664,151 @@
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, 512, 512);
                 
-                return canvas.toDataURL('image/png');
+                const url = canvas.toDataURL('image/png');
+                // For data URLs, we don't need to add to blobUrls or revoke
+                return url;
             },
             
             cleanup() {
+                // Only revoke object URLs, not data URLs
                 this.blobUrls.forEach(url => {
-                    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                    if (url.startsWith('blob:')) {
+                        try {
+                            URL.revokeObjectURL(url);
+                        } catch (e) {
+                            // Ignore errors when revoking URLs
+                        }
+                    }
                 });
                 this.blobUrls = [];
             }
         };
 
         /*=====================================================================
-          CONVERTER
+          SUT CONVERTER - FIXED VERSION
+        =====================================================================*/
+        const SUTConverter = {
+            async createSUT(brush) {
+                if (!SQL_READY) {
+                    throw new Error('SQL engine not ready');
+                }
+                
+                const db = new SQL.Database();
+                
+                try {
+                    // Start transaction
+                    db.exec("BEGIN TRANSACTION");
+                    
+                    // Create CSP-compatible database schema
+                    db.run(`CREATE TABLE Manager(
+                        _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ToolType INTEGER,
+                        Version INTEGER,
+                        RootUuid BLOB,
+                        CurrentNodeUuid BLOB
+                    )`);
+                    
+                    db.run(`CREATE TABLE Node(
+                        _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        NodeUuid BLOB,
+                        NodeName TEXT,
+                        NodeMaterialUuid TEXT
+                    )`);
+                    
+                    db.run(`CREATE TABLE MaterialFile(
+                        _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        FileData BLOB,
+                        MaterialUuid TEXT
+                    )`);
+                    
+                    // Generate UUIDs
+                    const rootUuid = UUIDUtils.generateUuidBlob();
+                    const nodeUuid = UUIDUtils.generateUuidBlob();
+                    const materialUuid = UUIDUtils.generateUuidBlob();
+                    
+                    // Insert manager data
+                    db.run(`INSERT INTO Manager (ToolType, Version, RootUuid, CurrentNodeUuid) 
+                           VALUES (2, 1, ?, ?)`, [rootUuid, nodeUuid]);
+                    
+                    // Insert node data
+                    db.run(`INSERT INTO Node (NodeUuid, NodeName, NodeMaterialUuid) 
+                           VALUES (?, ?, ?)`, [nodeUuid, brush.name, UUIDUtils.blobToUuid(materialUuid)]);
+                    
+                    // Get image data
+                    let imageData = null;
+                    try {
+                        const response = await fetch(brush.tipPNG);
+                        if (response.ok) {
+                            imageData = await response.arrayBuffer();
+                        } else {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                    } catch (error) {
+                        Logger.warning(`Could not fetch image for ${brush.name}: ${error.message}`);
+                        // Create a simple placeholder image
+                        imageData = await this.createPlaceholderImage();
+                    }
+                    
+                    // Insert material data
+                    if (imageData) {
+                        db.run(`INSERT INTO MaterialFile (FileData, MaterialUuid) 
+                               VALUES (?, ?)`, [new Uint8Array(imageData), UUIDUtils.blobToUuid(materialUuid)]);
+                    }
+                    
+                    // Commit transaction and export
+                    db.exec("COMMIT");
+                    const exported = db.export();
+                    
+                    return new Blob([exported], { type: 'application/octet-stream' });
+                } catch (error) {
+                    // Rollback on error
+                    try {
+                        db.exec("ROLLBACK");
+                    } catch (rollbackError) {
+                        // Ignore rollback errors
+                    }
+                    throw error;
+                } finally {
+                    // Always close the database
+                    try {
+                        db.close();
+                    } catch (closeError) {
+                        // Ignore close errors
+                    }
+                }
+            },
+            
+            async createPlaceholderImage() {
+                return new Promise(resolve => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = canvas.height = 512;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, 512, 512);
+                    
+                    canvas.toBlob(blob => {
+                        blob.arrayBuffer().then(resolve);
+                    }, 'image/png');
+                });
+            }
+        };
+
+        /*=====================================================================
+          MAIN CONVERTER - FIXED VERSION
         =====================================================================*/
         const Converter = {
             async convert(brushes, format) {
+                if (brushes.length === 0) {
+                    throw new Error('No brushes to convert');
+                }
+                
                 const zip = new JSZip();
                 const compressionLevel = parseInt(document.getElementById('compressionLevel').value);
                 const totalBrushes = brushes.length;
                 
                 UI.showProgress(0);
+                AppState.stats.brushesConverted = 0;
+                UI.updateStats();
                 
                 for (let i = 0; i < totalBrushes; i++) {
                     const brush = brushes[i];
@@ -927,57 +817,98 @@
                     
                     try {
                         if (format === 'sut') {
+                            if (!SQL_READY) {
+                                throw new Error('SQL engine not available for SUT conversion');
+                            }
                             const sutBlob = await SUTConverter.createSUT(brush);
                             zip.file(`${brush.name}.sut`, sutBlob);
                         } else if (format === 'png') {
-                            const response = await fetch(brush.tipPNG);
-                            const pngBlob = await response.blob();
+                            const pngResponse = await fetch(brush.tipPNG);
+                            if (!pngResponse.ok) {
+                                throw new Error(`Failed to fetch PNG: ${pngResponse.status}`);
+                            }
+                            const pngBlob = await pngResponse.blob();
                             zip.file(`${brush.name}.png`, pngBlob);
-                        } else if (format === 'json') {
-                            const response = await fetch(brush.tipPNG);
-                            const pngBlob = await response.blob();
-                            zip.file(`${brush.name}.png`, pngBlob);
-                            zip.file(`${brush.name}.json`, JSON.stringify(brush, null, 2));
                         }
                         
                         AppState.stats.brushesConverted++;
                         UI.updateStats();
                         
-                        if (i % 3 === 0) {
+                        // Yield to UI thread occasionally for better responsiveness
+                        if (i % 5 === 0) {
                             await new Promise(resolve => setTimeout(resolve, 10));
                         }
                     } catch (error) {
-                        Logger.warning(`Failed to convert brush "${brush.name}": ${error.message}`);
+                        Logger.error(`Failed to convert brush "${brush.name}": ${error.message}`);
+                        // Continue with next brush instead of failing completely
                     }
                 }
                 
-                return await zip.generateAsync({
-                    type: 'blob',
-                    compression: 'DEFLATE',
-                    compressionOptions: { level: compressionLevel }
-                });
+                if (AppState.stats.brushesConverted === 0) {
+                    throw new Error('No brushes were successfully converted');
+                }
+                
+                UI.showProgress(95);
+                
+                try {
+                    const result = await zip.generateAsync({
+                        type: 'blob',
+                        compression: 'DEFLATE',
+                        compressionOptions: { level: compressionLevel }
+                    });
+                    
+                    UI.showProgress(100);
+                    return result;
+                } catch (error) {
+                    throw new Error(`Failed to create ZIP file: ${error.message}`);
+                }
             }
         };
 
         /*=====================================================================
-          EVENT HANDLERS & INITIALIZATION
+          EVENT HANDLERS & INITIALIZATION - FIXED VERSION
         =====================================================================*/
         window.addEventListener('load', async () => {
+            // Initialize UI first
+            UI.init();
+            Logger.info('CSP Brush Converter Pro - Fixed Version Initializing...');
+            UI.showStatus('Initializing...', 'info');
+            
+            // Initialize SQL.js with better error handling
             try {
-                const sqlModule = await initSqlJs({
-                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+                Logger.info('Loading SQL.js engine...');
+                
+                // Use the correct CDN URL format
+                SQL = await initSqlJs({
+                    locateFile: url => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${url}`
                 });
-                SQL = sqlModule;
+                
                 SQL_READY = true;
-                Logger.info('SQL.js engine ready');
+                Logger.success('SQL.js engine loaded successfully');
+                
+                if (AppState.filesLoaded && AppState.files.length > 0) {
+                    UI.enableConvertButton();
+                    UI.showStatus('Ready to convert', 'success');
+                } else {
+                    UI.showStatus('SQL engine ready - load brush files to begin', 'info');
+                }
             } catch (error) {
-                Logger.error('SQL.js initialization failed: ' + error.message);
-                UI.showStatus('Database engine error', 'error');
+                Logger.error('SQL.js failed to load: ' + error.message);
+                UI.showStatus('Limited functionality - PNG export only available', 'warning');
+                SQL_READY = false;
+                
+                // Disable SUT format if SQL isn't available
+                const sutOption = UI.e.targetFormat.querySelector('option[value="sut"]');
+                if (sutOption) {
+                    sutOption.disabled = true;
+                    if (UI.e.targetFormat.value === 'sut') {
+                        UI.e.targetFormat.value = 'png';
+                        UI.updateFormatInfo();
+                    }
+                }
             }
             
-            UI.init();
-            
-            // File import handlers
+            // Setup button event listeners
             UI.e.importFilesBtn.addEventListener('click', () => {
                 UI.e.fileInput.value = '';
                 UI.e.fileInput.click();
@@ -989,35 +920,29 @@
             });
             
             UI.e.importFolderBtn.addEventListener('click', () => {
-                if (UI.e.folderInput.webkitdirectory !== undefined) {
+                if ('webkitdirectory' in document.createElement('input')) {
                     UI.e.folderInput.value = '';
                     UI.e.folderInput.click();
                 } else {
+                    alert('Folder import is only supported in Chrome and Edge browsers. Please use the "Import Files" button instead.');
                     Logger.warning('Folder selection not supported in this browser');
-                    UI.showStatus('Folder selection requires Chrome/Edge', 'warning');
                 }
             });
             
             // File input change handlers
-            UI.e.fileInput.addEventListener('change', (e) => {
-                if (e.target.files.length > 0) {
-                    FileManager.handleFiles(Array.from(e.target.files));
+            const handleFileInput = async (e, source) => {
+                const files = Array.from(e.target.files);
+                if (files.length > 0) {
+                    Logger.info(`Selected ${files.length} file(s) from ${source}`);
+                    await FileManager.handleFiles(files);
                 }
-            });
+            };
             
-            UI.e.zipInput.addEventListener('change', (e) => {
-                if (e.target.files.length > 0) {
-                    FileManager.handleFiles(Array.from(e.target.files));
-                }
-            });
+            UI.e.fileInput.addEventListener('change', (e) => handleFileInput(e, 'file picker'));
+            UI.e.zipInput.addEventListener('change', (e) => handleFileInput(e, 'ZIP file'));
+            UI.e.folderInput.addEventListener('change', (e) => handleFileInput(e, 'folder'));
             
-            UI.e.folderInput.addEventListener('change', (e) => {
-                if (e.target.files.length > 0) {
-                    FileManager.handleFiles(Array.from(e.target.files));
-                }
-            });
-            
-            // Drag and drop
+            // Drag and drop with better handling
             UI.e.dropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 UI.e.dropZone.classList.add('dragover');
@@ -1030,62 +955,123 @@
             UI.e.dropZone.addEventListener('drop', async (e) => {
                 e.preventDefault();
                 UI.e.dropZone.classList.remove('dragover');
-                if (e.dataTransfer.files.length > 0) {
-                    await FileManager.handleFiles(Array.from(e.dataTransfer.files));
+                
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length > 0) {
+                    Logger.info(`Dropped ${files.length} file(s)`);
+                    await FileManager.handleFiles(files);
                 }
             });
             
-            // Convert button
+            // Convert button with comprehensive error handling
             UI.e.convertBtn.addEventListener('click', async () => {
-                if (AppState.converting) return;
+                if (AppState.converting) {
+                    Logger.warning('Conversion already in progress');
+                    return;
+                }
                 
                 AppState.converting = true;
                 UI.disableConvertButton();
+                BrushParser.cleanup(); // Clean up any previous blob URLs
+                
                 Logger.clear();
+                UI.showStatus('Starting conversion...', 'info');
                 
                 try {
-                    UI.showStatus('Parsing brushes...', 'info');
+                    // Parse brushes
+                    UI.showStatus('Parsing brush data...', 'info');
                     const brushes = await BrushParser.parse(AppState.files);
                     
                     if (brushes.length === 0) {
-                        throw new Error('No valid brushes found in the loaded files');
+                        throw new Error('No valid brushes could be parsed from the uploaded files. Please check that you have uploaded brush files (PNG, ABR, or JSON).');
                     }
                     
                     const format = UI.e.targetFormat.value;
-                    const packageName = UI.sanitizeName(document.getElementById('packageName').value);
+                    const authorName = document.getElementById('authorName').value || 'Converted Brush';
+                    let packageName = document.getElementById('packageName').value || 'Converted_Brushes';
+                    
+                    // Sanitize package name
+                    packageName = UI.sanitizeName(packageName);
                     
                     UI.showStatus(`Converting ${brushes.length} brushes to ${format.toUpperCase()}...`, 'info');
+                    
+                    // Show progress bar
+                    UI.e.progressBar.classList.add('show');
+                    
+                    // Perform conversion
                     const resultBlob = await Converter.convert(brushes, format);
                     
+                    // Create download
                     const downloadLink = document.createElement('a');
-                    downloadLink.href = URL.createObjectURL(resultBlob);
-                    downloadLink.download = `${packageName}_${format}_${Date.now()}.zip`;
-                    downloadLink.click();
-                    URL.revokeObjectURL(downloadLink.href);
+                    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+                    const filename = `${packageName}_${format}_${timestamp}.zip`;
                     
-                    UI.showStatus('Conversion complete!', 'success');
-                    Logger.success(`Download ready: ${(resultBlob.size / 1024 / 1024).toFixed(2)} MB`);
-                    Logger.success(`Converted ${brushes.length} brushes successfully`);
+                    downloadLink.href = URL.createObjectURL(resultBlob);
+                    downloadLink.download = filename;
+                    downloadLink.style.display = 'none';
+                    
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                    
+                    // Clean up the object URL after a short delay
+                    setTimeout(() => {
+                        try {
+                            URL.revokeObjectURL(downloadLink.href);
+                        } catch (e) {
+                            // Ignore errors when revoking
+                        }
+                    }, 1000);
+                    
+                    // Show success
+                    const fileSizeMB = (resultBlob.size / (1024 * 1024)).toFixed(2);
+                    UI.showStatus(`Conversion complete! Downloaded ${fileSizeMB} MB`, 'success');
+                    Logger.success(`Successfully converted ${brushes.length} brushes`);
+                    Logger.success(`Output: ${filename} (${fileSizeMB} MB)`);
                     
                 } catch (error) {
                     Logger.error('Conversion failed: ' + error.message);
-                    UI.showStatus('Error: ' + error.message.substring(0, 50), 'error');
+                    UI.showStatus('Conversion failed: ' + error.message, 'error');
+                    console.error('Conversion error details:', error);
                 } finally {
                     AppState.converting = false;
                     BrushParser.cleanup();
                     
-                    if (AppState.filesLoaded) {
+                    // Re-enable convert button if we have files
+                    if (AppState.filesLoaded && AppState.files.length > 0) {
                         UI.enableConvertButton();
                     }
                 }
             });
             
-            Logger.info('CSP Brush Converter Pro - Ultimate V6 Ready!');
-            Logger.info('Enhanced with: ABR parser v3 | CSP version control | Advanced parameter mapping');
+            Logger.info('CSP Brush Converter Pro - Fixed Version Ready!');
+            Logger.info('Drag and drop brush files or use the import buttons above');
+            UI.showStatus('Ready - load brush files to begin', 'success');
         });
         
+        // Comprehensive cleanup on page unload
         window.addEventListener('beforeunload', () => {
             BrushParser.cleanup();
+            
+            // Additional cleanup for any remaining blob URLs
+            if (AppState.brushes && Array.isArray(AppState.brushes)) {
+                AppState.brushes.forEach(brush => {
+                    if (brush.tipPNG && brush.tipPNG.startsWith('blob:')) {
+                        try {
+                            URL.revokeObjectURL(brush.tipPNG);
+                        } catch (e) {
+                            // Ignore errors
+                        }
+                    }
+                });
+            }
+        });
+        
+        // Handle page visibility changes to clean up resources
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                BrushParser.cleanup();
+            }
         });
     </script>
 </body>
