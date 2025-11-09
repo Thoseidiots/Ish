@@ -1,611 +1,790 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>CSP Brush Converter Pro - Ultimate V5 (Fixed)</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-     background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px;color:#fff}
-.container{max-width:1200px;margin:0 auto;background:rgba(255,255,255,.95);
-           border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
-.header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:30px;text-align:center}
-.header h1{font-size:clamp(1.5em,4vw,2.5em);margin-bottom:10px;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,.2)}
-.header p{opacity:.9;font-size:1.1em}
-.content{padding:clamp(20px,4vw,40px);color:#333}
-#dropZone{border:3px dashed #667eea;border-radius:15px;padding:clamp(40px,8vw,60px) clamp(20px,4vw,30px);
-          text-align:center;background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%);
-          transition:all .3s;cursor:pointer;margin-bottom:30px}
-#dropZone:hover{border-color:#764ba2;transform:translateY(-2px);box-shadow:0 10px 30px rgba(102,126,234,.3)}
-#dropZone.dragover{border-color:#00d4ff;background:linear-gradient(135deg,#e0f7fa 0%,#b2ebf2 100%);transform:scale(1.02)}
-#dropZone svg{width:clamp(48px,8vw,64px);height:clamp(48px,8vw,64px);margin-bottom:20px;opacity:.7}
-.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin-bottom:30px}
-.control-group{background:#f8f9fa;padding:20px;border-radius:10px;border:1px solid #e9ecef}
-.control-group label{display:block;font-weight:600;margin-bottom:10px;color:#495057}
-select,input[type=text]{width:100%;padding:12px;border:2px solid #dee2e6;border-radius:8px;font-size:1em;transition:border-color .3s}
-select:focus,input[type=text]:focus{outline:none;border-color:#667eea}
-.btn{padding:15px 40px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-     color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:1.1em;font-weight:600;
-     transition:all .3s;box-shadow:0 4px 15px rgba(102,126,234,.4);display:inline-flex;align-items:center;gap:10px;width:100%;justify-content:center}
-.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 20px rgba(102,126,234,.6)}
-.btn:disabled{background:#adb5bd;cursor:not-allowed;box-shadow:none}
-.file-input-group{display:flex;gap:10px;margin-top:20px}
-.file-input-group .btn{flex:1}
-.status-bar{background:#e9ecef;padding:15px;border-radius:8px;margin-bottom:20px;display:none;align-items:center;gap:10px}
-.status-bar.show{display:flex}
-.status-bar.success{background:#d4edda;color:#155724}
-.status-bar.error{background:#f8d7da;color:#721c24}
-.status-bar.info{background:#d1ecf1;color:#0c5460}
-#log{background:#1e1e1e;padding:20px;border-radius:10px;max-height:400px;overflow-y:auto;
-     font-family:'Courier New',monospace;font-size:.9em;line-height:1.6}
-.log-entry{padding:5px 0;border-left:3px solid transparent;padding-left:10px;margin-bottom:5px}
-.log-entry.success{color:#4caf50;border-color:#4caf50}
-.log-entry.info{color:#2196f3;border-color:#2196f3}
-.log-entry.error{color:#f44336;border-color:#f44336}
-.log-entry.warning{color:#ff9800;border-color:#ff9800}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:30px}
-.stat-card{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:20px;border-radius:10px;color:#fff;text-align:center}
-.stat-card .value{font-size:clamp(1.5em,3vw,2em);font-weight:bold;margin-bottom:5px}
-.stat-card .label{opacity:.9;font-size:.9em}
-.progress-bar{width:100%;height:8px;background:#e9ecef;border-radius:4px;overflow:hidden;margin-top:10px;display:none}
-.progress-bar.show{display:block}
-.progress-fill{height:100%;background:linear-gradient(90deg,#667eea 0%,#764ba2 100%);width:0%;transition:width .3s}
-.format-info{margin-top:10px;padding:10px;background:#e3f2fd;border-radius:5px;font-size:.9em;color:#1565c0}
-.warning-box{margin-top:10px;padding:10px;background:#fff3cd;border-radius:5px;font-size:.85em;color:#856404}
-@media(max-width:768px){.controls{grid-template-columns:1fr}.file-input-group{flex-direction:column}}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSP Brush Converter Pro - Ultimate V5</title>
+    <meta name="description" content="Convert Procreate, Photoshop ABR, and custom brushes to Clip Studio Paint format online for free">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+             background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px;color:#fff}
+        .container{max-width:1200px;margin:0 auto;background:rgba(255,255,255,.95);
+                   border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+        .header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:30px;text-align:center}
+        .header h1{font-size:clamp(1.5em,4vw,2.5em);margin-bottom:10px;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,.2)}
+        .header p{opacity:.9;font-size:1.1em}
+        .content{padding:clamp(20px,4vw,40px);color:#333}
+        #dropZone{border:3px dashed #667eea;border-radius:15px;padding:clamp(40px,8vw,60px) clamp(20px,4vw,30px);
+                  text-align:center;background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%);
+                  transition:all .3s;cursor:pointer;margin-bottom:30px}
+        #dropZone:hover{border-color:#764ba2;transform:translateY(-2px);box-shadow:0 10px 30px rgba(102,126,234,.3)}
+        #dropZone.dragover{border-color:#00d4ff;background:linear-gradient(135deg,#e0f7fa 0%,#b2ebf2 100%);transform:scale(1.02)}
+        #dropZone svg{width:clamp(48px,8vw,64px);height:clamp(48px,8vw,64px);margin-bottom:20px;opacity:.7}
+        .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin-bottom:30px}
+        .control-group{background:#f8f9fa;padding:20px;border-radius:10px;border:1px solid #e9ecef}
+        .control-group label{display:block;font-weight:600;margin-bottom:10px;color:#495057}
+        select,input[type=text]{width:100%;padding:12px;border:2px solid #dee2e6;border-radius:8px;font-size:1em;transition:border-color .3s}
+        select:focus,input[type=text]:focus{outline:none;border-color:#667eea}
+        .btn{padding:15px 40px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+             color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:1.1em;font-weight:600;
+             transition:all .3s;box-shadow:0 4px 15px rgba(102,126,234,.4);display:inline-flex;align-items:center;gap:10px;width:100%;justify-content:center}
+        .btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 20px rgba(102,126,234,.6)}
+        .btn:disabled{background:#adb5bd;cursor:not-allowed;box-shadow:none}
+        .file-input-group{display:flex;gap:10px;margin-top:20px}
+        .file-input-group .btn{flex:1}
+        .status-bar{background:#e9ecef;padding:15px;border-radius:8px;margin-bottom:20px;display:none;align-items:center;gap:10px}
+        .status-bar.show{display:flex}
+        .status-bar.success{background:#d4edda;color:#155724}
+        .status-bar.error{background:#f8d7da;color:#721c24}
+        .status-bar.info{background:#d1ecf1;color:#0c5460}
+        #log{background:#1e1e1e;padding:20px;border-radius:10px;max-height:400px;overflow-y:auto;
+             font-family:'Courier New',monospace;font-size:.9em;line-height:1.6}
+        .log-entry{padding:5px 0;border-left:3px solid transparent;padding-left:10px;margin-bottom:5px}
+        .log-entry.success{color:#4caf50;border-color:#4caf50}
+        .log-entry.info{color:#2196f3;border-color:#2196f3}
+        .log-entry.error{color:#f44336;border-color:#f44336}
+        .log-entry.warning{color:#ff9800;border-color:#ff9800}
+        .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:30px}
+        .stat-card{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:20px;border-radius:10px;color:#fff;text-align:center}
+        .stat-card .value{font-size:clamp(1.5em,3vw,2em);font-weight:bold;margin-bottom:5px}
+        .stat-card .label{opacity:.9;font-size:.9em}
+        .progress-bar{width:100%;height:8px;background:#e9ecef;border-radius:4px;overflow:hidden;margin-top:10px;display:none}
+        .progress-bar.show{display:block}
+        .progress-fill{height:100%;background:linear-gradient(90deg,#667eea 0%,#764ba2 100%);width:0%;transition:width .3s}
+        .format-info{margin-top:10px;padding:10px;background:#e3f2fd;border-radius:5px;font-size:.9em;color:#1565c0}
+        .warning-box{margin-top:10px;padding:10px;background:#fff3cd;border-radius:5px;font-size:.85em;color:#856404}
+        .footer{text-align:center;padding:20px;margin-top:30px;color:rgba(255,255,255,.7);font-size:.9em}
+        .import-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:15px}
+        @media(max-width:768px){.controls{grid-template-columns:1fr}.file-input-group{flex-direction:column}.import-options{grid-template-columns:1fr}}
+    </style>
 </head>
 <body>
-<div class="container">
-  <div class="header">
-    <h1>CSP Brush Converter Pro</h1>
-    <p>Convert Procreate, ABR, and custom brushes to Clip Studio Paint format</p>
-  </div>
-  <div class="content">
-    <div id="dropZone">
-      <svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z"/></svg>
-      <h2 style="color:#667eea;margin-bottom:10px">Drop Files Here</h2>
-      <p style="color:#6c757d;margin-bottom:20px">Supports: .brushset, .zip, .abr (v1-6+), .brush, folders</p>
-      <div class="file-input-group">
-        <button class="btn" id="browseFilesBtn">Browse Files</button>
-        <button class="btn" id="browseFolderBtn">Browse Folder</button>
-      </div>
-      <input type="file" id="fileInput" multiple accept=".brushset,.zip,.abr,.brush,.json,.png" style="display:none">
-      <input type="file" id="folderInput" webkitdirectory directory style="display:none">
+    <div class="container">
+        <div class="header">
+            <h1>CSP Brush Converter Pro</h1>
+            <p>Convert Procreate, ABR, and custom brushes to Clip Studio Paint format</p>
+        </div>
+        <div class="content">
+            <div id="dropZone">
+                <svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z"/></svg>
+                <h2 style="color:#667eea;margin-bottom:10px">Drop Files Here</h2>
+                <p style="color:#6c757d;margin-bottom:20px">Supports: .brushset, .zip, .abr (v1-6+), .brush, folders</p>
+                
+                <div class="import-options">
+                    <button class="btn" id="importFilesBtn">Import Files</button>
+                    <button class="btn" id="importZipBtn">Import ZIP</button>
+                    <button class="btn" id="importFolderBtn">Import Folder</button>
+                </div>
+                
+                <input type="file" id="fileInput" multiple accept=".brushset,.zip,.abr,.brush,.json,.png" style="display:none">
+                <input type="file" id="zipInput" accept=".zip,.brushset" style="display:none">
+                <input type="file" id="folderInput" webkitdirectory directory style="display:none">
+            </div>
+
+            <div class="stats" id="stats" style="display:none">
+                <div class="stat-card"><div class="value" id="fileCount">0</div><div class="label">Files Loaded</div></div>
+                <div class="stat-card"><div class="value" id="brushCount">0</div><div class="label">Brushes Found</div></div>
+                <div class="stat-card"><div class="value" id="convertedCount">0</div><div class="label">Converted</div></div>
+                <div class="stat-card"><div class="value" id="textureCount">0</div><div class="label">Textures</div></div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label for="targetFormat">Output Format</label>
+                    <select id="targetFormat">
+                        <option value="sut">Clip Studio Paint (.sut) - Full</option>
+                        <option value="png">Brush Tip PNGs Only</option>
+                        <option value="json">JSON + PNGs (Dev)</option>
+                    </select>
+                    <div class="format-info" id="formatInfo"></div>
+                </div>
+                <div class="control-group">
+                    <label for="packageName">Package Name</label>
+                    <input type="text" id="packageName" placeholder="My Custom Brushes" value="Converted Brushes">
+                </div>
+                <div class="control-group">
+                    <label for="authorName">Author Name</label>
+                    <input type="text" id="authorName" placeholder="Artist Name">
+                </div>
+                <div class="control-group">
+                    <label for="compressionLevel">Compression</label>
+                    <select id="compressionLevel">
+                        <option value="1">Fast</option>
+                        <option value="6" selected>Balanced</option>
+                        <option value="9">Maximum</option>
+                    </select>
+                </div>
+            </div>
+
+            <button id="convertBtn" class="btn" disabled>Convert & Download</button>
+            <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+            <div id="statusBar" class="status-bar"><span id="statusText">Ready</span></div>
+            <div id="log"></div>
+        </div>
+        <div class="footer">
+            <p>CSP Brush Converter Pro - Ultimate V5 | All processing happens in your browser - no files are uploaded to any server</p>
+        </div>
     </div>
 
-    <div class="stats" id="stats" style="display:none">
-      <div class="stat-card"><div class="value" id="fileCount">0</div><div class="label">Files Loaded</div></div>
-      <div class="stat-card"><div class="value" id="brushCount">0</div><div class="label">Brushes Found</div></div>
-      <div class="stat-card"><div class="value" id="convertedCount">0</div><div class="label">Converted</div></div>
-      <div class="stat-card"><div class="value" id="textureCount">0</div><div class="label">Textures</div></div>
-    </div>
+    <script>
+        /*=====================================================================
+          GLOBAL INIT
+        =====================================================================*/
+        let SQL, SQL_READY = false;
+        
+        /*=====================================================================
+          STATE & UI
+        =====================================================================*/
+        const AppState = {
+            files: [], 
+            brushes: [], 
+            filesLoaded: false, 
+            converting: false,
+            stats: {
+                filesLoaded: 0,
+                brushesParsed: 0, 
+                brushesConverted: 0, 
+                placeholderTips: 0, 
+                texturesFound: 0
+            }
+        };
 
-    <div class="controls">
-      <div class="control-group">
-        <label for="targetFormat">Output Format</label>
-        <select id="targetFormat">
-          <option value="sut">Clip Studio Paint (.sut) - Full</option>
-          <option value="png">Brush Tip PNGs Only</option>
-          <option value="json">JSON + PNGs (Dev)</option>
-        </select>
-        <div class="format-info" id="formatInfo"></div>
-      </div>
-      <div class="control-group">
-        <label for="packageName">Package Name</label>
-        <input type="text" id="packageName" placeholder="My Custom Brushes" value="Converted Brushes">
-      </div>
-      <div class="control-group">
-        <label for="authorName">Author Name</label>
-        <input type="text" id="authorName" placeholder="Artist Name">
-      </div>
-      <div class="control-group">
-        <label for="compressionLevel">Compression</label>
-        <select id="compressionLevel">
-          <option value="1">Fast</option>
-          <option value="6" selected>Balanced</option>
-          <option value="9">Maximum</option>
-        </select>
-      </div>
-    </div>
+        const UI = {
+            e: {
+                dropZone: document.getElementById('dropZone'),
+                fileInput: document.getElementById('fileInput'),
+                zipInput: document.getElementById('zipInput'),
+                folderInput: document.getElementById('folderInput'),
+                importFilesBtn: document.getElementById('importFilesBtn'),
+                importZipBtn: document.getElementById('importZipBtn'),
+                importFolderBtn: document.getElementById('importFolderBtn'),
+                convertBtn: document.getElementById('convertBtn'),
+                log: document.getElementById('log'),
+                statusBar: document.getElementById('statusBar'),
+                statusText: document.getElementById('statusText'),
+                progressBar: document.getElementById('progressBar'),
+                progressFill: document.getElementById('progressFill'),
+                stats: document.getElementById('stats'),
+                fileCount: document.getElementById('fileCount'),
+                brushCount: document.getElementById('brushCount'),
+                convertedCount: document.getElementById('convertedCount'),
+                textureCount: document.getElementById('textureCount'),
+                formatInfo: document.getElementById('formatInfo'),
+                targetFormat: document.getElementById('targetFormat')
+            },
+            init() {
+                this.e.targetFormat.addEventListener('change', () => {
+                    this.updateFormatInfo();
+                    this.updateFormatWarnings();
+                });
+                this.updateFormatInfo();
+            },
+            updateFormatInfo() {
+                const info = {
+                    'sut': 'Full .sut with real CSP schema (Manager + Node + MaterialFile)',
+                    'png': 'Tip PNGs only', 
+                    'json': 'Dev export'
+                };
+                this.e.formatInfo.textContent = info[this.e.targetFormat.value] || '';
+            },
+            updateFormatWarnings() {
+                const warning = document.getElementById('formatWarning');
+                if (warning) warning.remove();
+                if (this.e.targetFormat.value === 'png') {
+                    const box = document.createElement('div');
+                    box.id = 'formatWarning';
+                    box.className = 'warning-box';
+                    box.textContent = 'Warning: PNG format loses all brush settings!';
+                    this.e.formatInfo.parentNode.insertBefore(box, this.e.formatInfo.nextSibling);
+                }
+            },
+            sanitizeName(n) {
+                return n.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
+                       .replace(/[<>:"/\\|?*]/g, '_')
+                       .replace(/\s+/g, ' ')
+                       .substring(0, 100)
+                       .trim() || 'Brush';
+            },
+            showStatus(m, t = 'info') {
+                this.e.statusBar.className = `status-bar show ${t}`;
+                this.e.statusText.textContent = m;
+            },
+            showProgress(p) {
+                this.e.progressBar.classList.add('show');
+                this.e.progressFill.style.width = p + '%';
+            },
+            updateStats() {
+                this.e.stats.style.display = 'grid';
+                this.e.fileCount.textContent = AppState.stats.filesLoaded;
+                this.e.brushCount.textContent = AppState.stats.brushesParsed;
+                this.e.convertedCount.textContent = AppState.stats.brushesConverted;
+                this.e.textureCount.textContent = AppState.stats.texturesFound;
+            },
+            enableConvertButton() {
+                this.e.convertBtn.disabled = false;
+            },
+            disableConvertButton() {
+                this.e.convertBtn.disabled = true;
+            }
+        };
 
-    <button id="convertBtn" class="btn" disabled>Convert & Download</button>
-    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
-    <div id="statusBar" class="status-bar"><span id="statusText">Ready</span></div>
-    <div id="log"></div>
-  </div>
-</div>
+        /*=====================================================================
+          LOGGER
+        =====================================================================*/
+        const Logger = {
+            log(m, t = 'info') {
+                const e = document.createElement('div');
+                e.className = `log-entry ${t}`;
+                e.textContent = `[${new Date().toLocaleTimeString()}] ${m}`;
+                UI.e.log.appendChild(e);
+                UI.e.log.scrollTop = UI.e.log.scrollHeight;
+            },
+            info: m => this.log(m, 'info'),
+            success: m => this.log(m, 'success'),
+            error: m => this.log(m, 'error'),
+            warning: m => this.log(m, 'warning'),
+            clear() { UI.e.log.innerHTML = ''; }
+        };
 
-<script>
-/*=====================================================================
-  GLOBAL INIT
-=====================================================================*/
-let SQL, SQL_READY = false;
-window.addEventListener('load', async () => {
-  try {
-    const sqlModule = await initSqlJs({locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`});
-    SQL = sqlModule;
-    SQL_READY = true;
-    Logger.info('SQL.js ready');
-    if(AppState.filesLoaded) UI.enableConvertButton();
-    if (!window.showDirectoryPicker && !('webkitdirectory' in document.createElement('input'))) {
-      UI.e.browseFolderBtn.disabled = true;
-      UI.e.browseFolderBtn.title = "Folder selection requires Chrome/Edge";
-      Logger.warning("Folder selection not supported");
-    }
-  } catch(e) {
-    Logger.error('SQL.js init failed: '+e.message);
-    UI.showStatus('Database engine error', 'error');
-  }
-});
+        /*=====================================================================
+          UUID HANDLING
+        =====================================================================*/
+        const UUIDUtils = { 
+            uuidToBlob: function(uuid) {
+                const clean = uuid.replace(/-/g, '');
+                if (clean.length !== 32) return this.generateUuidBlob();
+                const bytes = new Uint8Array(16);
+                for (let i = 0; i < 16; i++) bytes[i] = parseInt(clean.substr(i * 2, 2), 16);
+                return bytes.buffer;
+            },
+            blobToUuid: function(blob) {
+                const bytes = new Uint8Array(blob);
+                let uuid = '';
+                for (let i = 0; i < 16; i++) uuid += bytes[i].toString(16).padStart(2, '0');
+                return `${uuid.substr(0,8)}-${uuid.substr(8,4)}-${uuid.substr(12,4)}-${uuid.substr(16,4)}-${uuid.substr(20,12)}`;
+            },
+            generateUuidBlob: function() {
+                const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    const r = Math.random() * 16 | 0;
+                    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+                return this.uuidToBlob(uuid);
+            }
+        };
 
-/*=====================================================================
-  STATE & UI
-=====================================================================*/
-const AppState = {files:[], brushes:[], filesLoaded:false, converting:false,
-                  stats:{filesLoaded:0,brushesParsed:0,brushesConverted:0,placeholderTips:0,texturesFound:0}};
+        /*=====================================================================
+          IMAGE VALIDATOR
+        =====================================================================*/
+        const ImageValidator = {
+            async validateAlphaAndOptimise(data) {
+                return new Promise((resolve, reject) => {
+                    const blob = new Blob([data], { type: 'image/png' });
+                    const img = new Image();
+                    const url = URL.createObjectURL(blob);
+                    
+                    img.onload = () => {
+                        URL.revokeObjectURL(url);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 512;
+                        canvas.height = 512;
+                        const ctx = canvas.getContext('2d');
+                        
+                        ctx.drawImage(img, 0, 0, 512, 512);
+                        const imageData = ctx.getImageData(0, 0, 512, 512);
+                        
+                        let hasAlpha = false;
+                        for (let i = 3; i < imageData.data.length; i += 4) {
+                            if (imageData.data[i] < 255) {
+                                hasAlpha = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!hasAlpha) {
+                            Logger.warning('No alpha channel detected - adding transparency');
+                            for (let i = 3; i < imageData.data.length; i += 4) {
+                                imageData.data[i] = 255 - imageData.data[i - 3];
+                                imageData.data[i - 3] = imageData.data[i - 2] = imageData.data[i - 1] = 255;
+                            }
+                            ctx.putImageData(imageData, 0, 0);
+                        }
+                        
+                        canvas.toBlob(blob => {
+                            blob.arrayBuffer().then(resolve).catch(reject);
+                        }, 'image/png');
+                    };
+                    
+                    img.onerror = () => {
+                        URL.revokeObjectURL(url);
+                        reject(new Error('Failed to load image'));
+                    };
+                    
+                    img.src = url;
+                });
+            }
+        };
 
-const UI = {
-  e:{dropZone:document.getElementById('dropZone'),fileInput:document.getElementById('fileInput'),
-     folderInput:document.getElementById('folderInput'),browseFilesBtn:document.getElementById('browseFilesBtn'),
-     browseFolderBtn:document.getElementById('browseFolderBtn'),convertBtn:document.getElementById('convertBtn'),
-     log:document.getElementById('log'),statusBar:document.getElementById('statusBar'),
-     statusText:document.getElementById('statusText'),progressBar:document.getElementById('progressBar'),
-     progressFill:document.getElementById('progressFill'),stats:document.getElementById('stats'),
-     fileCount:document.getElementById('fileCount'),brushCount:document.getElementById('brushCount'),
-     convertedCount:document.getElementById('convertedCount'),textureCount:document.getElementById('textureCount'),
-     formatInfo:document.getElementById('formatInfo'),targetFormat:document.getElementById('targetFormat')},
-  init(){this.e.targetFormat.addEventListener('change',()=>{this.updateFormatInfo();this.updateFormatWarnings();});this.updateFormatInfo();},
-  updateFormatInfo(){
-    const i={'sut':'Full .sut with real CSP schema (Manager + Node + MaterialFile)',
-            'png':'Tip PNGs only','json':'Dev export'};
-    this.e.formatInfo.textContent=i[this.e.targetFormat.value]||'';
-  },
-  updateFormatWarnings(){
-    const w=document.getElementById('formatWarning');if(w)w.remove();
-    if(this.e.targetFormat.value==='png'){
-      const b=document.createElement('div');b.id='formatWarning';b.className='warning-box';
-      b.textContent='Warning: PNG format loses all brush settings!';
-      this.e.formatInfo.parentNode.insertBefore(b,this.e.formatInfo.nextSibling);
-    }
-  },
-  sanitizeName(n){return n.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
-                       .replace(/[<>:"/\\|?*]/g,'_').replace(/\s+/g,' ').substring(0,100).trim()||'Brush';},
-  showStatus(m,t='info'){this.e.statusBar.className=`status-bar show ${t}`;this.e.statusText.textContent=m;},
-  showProgress(p){this.e.progressBar.classList.add('show');this.e.progressFill.style.width=p+'%';},
-  updateStats(){this.e.stats.style.display='grid';this.e.fileCount.textContent=AppState.stats.filesLoaded;
-               this.e.brushCount.textContent=AppState.stats.brushesParsed;
-               this.e.convertedCount.textContent=AppState.stats.brushesConverted;
-               this.e.textureCount.textContent=AppState.stats.texturesFound;},
-  enableConvertButton(){this.e.convertBtn.disabled=false;},
-  disableConvertButton(){this.e.convertBtn.disabled=true;}
-};
+        /*=====================================================================
+          FILE MANAGER
+        =====================================================================*/
+        const FileManager = {
+            ZIP_EXTENSIONS: ['zip', 'brushset', 'brush'],
+            
+            async handleFiles(files) {
+                Logger.clear();
+                UI.showStatus('Loading files...', 'info');
+                UI.disableConvertButton();
+                AppState.files = [];
+                AppState.stats.filesLoaded = 0;
+                
+                const promises = [];
+                for (const file of files) {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    if (file.size === 0) continue;
+                    
+                    if (this.ZIP_EXTENSIONS.includes(ext)) {
+                        promises.push(this.extractZip(file));
+                    } else {
+                        promises.push(this.addFile(file));
+                    }
+                }
+                
+                try {
+                    await Promise.all(promises);
+                    AppState.stats.filesLoaded = AppState.files.length;
+                    AppState.filesLoaded = true;
+                    UI.updateStats();
+                    Logger.success(`Loaded ${AppState.files.length} files`);
+                    
+                    if (AppState.files.length > 0 && SQL_READY) {
+                        UI.enableConvertButton();
+                        UI.showStatus('Ready to convert', 'success');
+                    } else {
+                        UI.showStatus(!SQL_READY ? 'Waiting for SQL engine...' : 'No valid files loaded', 'error');
+                    }
+                } catch (error) {
+                    Logger.error('Error loading files: ' + error.message);
+                    UI.showStatus('Error loading files', 'error');
+                }
+            },
+            
+            async addFile(file) {
+                try {
+                    const content = new Uint8Array(await file.arrayBuffer());
+                    AppState.files.push({
+                        name: file.name,
+                        path: file.webkitRelativePath || file.name,
+                        content: content
+                    });
+                } catch (error) {
+                    Logger.warning(`Failed to read file: ${file.name}`);
+                }
+            },
+            
+            async extractZip(file) {
+                Logger.info(`Extracting ZIP: ${file.name}`);
+                try {
+                    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+                    const promises = [];
+                    
+                    zip.forEach((relativePath, zipEntry) => {
+                        if (!zipEntry.dir) {
+                            promises.push(
+                                zipEntry.async('uint8array').then(content => {
+                                    AppState.files.push({
+                                        name: relativePath.split('/').pop(),
+                                        path: relativePath,
+                                        content: content
+                                    });
+                                })
+                            );
+                        }
+                    });
+                    
+                    await Promise.all(promises);
+                    Logger.success(`Extracted ${promises.length} files from ${file.name}`);
+                } catch (error) {
+                    Logger.error(`ZIP extraction failed: ${error.message}`);
+                }
+            }
+        };
 
-/*=====================================================================
-  LOGGER
-=====================================================================*/
-const Logger={log(m,t='info'){const e=document.createElement('div');e.className=`log-entry ${t}`;
-  e.textContent=`[${new Date().toLocaleTimeString()}] ${m}`;UI.e.log.appendChild(e);UI.e.log.scrollTop=UI.e.log.scrollHeight;},
-  info:m=>this.log(m,'info'),success:m=>this.log(m,'success'),error:m=>this.log(m,'error'),warning:m=>this.log(m,'warning'),clear(){UI.e.log.innerHTML='';}};
+        /*=====================================================================
+          BRUSH PARSER (SIMPLIFIED VERSION)
+        =====================================================================*/
+        const BrushParser = {
+            blobUrls: [],
+            
+            async parse(files) {
+                this.cleanup();
+                Logger.info('Parsing brush files...');
+                
+                const brushes = [];
+                const usedNames = new Set();
+                
+                for (const file of files) {
+                    const ext = file.name.toLowerCase();
+                    
+                    if (ext.endsWith('.png') && (file.name.includes('tip') || file.name.includes('shape') || file.name.includes('brush'))) {
+                        try {
+                            const brush = await this.createBrushFromPNG(file, usedNames);
+                            brushes.push(brush);
+                        } catch (error) {
+                            Logger.warning(`Failed to process PNG: ${file.name}`);
+                        }
+                    } else if (ext.endsWith('.abr')) {
+                        try {
+                            const abrBrushes = await this.parseABR(file);
+                            brushes.push(...abrBrushes);
+                        } catch (error) {
+                            Logger.error(`ABR parsing failed: ${error.message}`);
+                        }
+                    } else if (ext.endsWith('.json')) {
+                        try {
+                            const jsonBrushes = await this.parseJSON(file);
+                            brushes.push(...jsonBrushes);
+                        } catch (error) {
+                            Logger.warning(`JSON parsing failed: ${error.name}`);
+                        }
+                    }
+                }
+                
+                AppState.stats.brushesParsed = brushes.length;
+                Logger.success(`Parsed ${brushes.length} brushes`);
+                return brushes;
+            },
+            
+            async createBrushFromPNG(file, usedNames) {
+                const tipUrl = await this.processImage(file);
+                let name = UI.sanitizeName(file.name.replace(/\.[^/.]+$/, ""));
+                
+                let suffix = 1;
+                let finalName = name;
+                while (usedNames.has(finalName)) {
+                    finalName = name + '_' + suffix;
+                    suffix++;
+                }
+                usedNames.add(finalName);
+                
+                return {
+                    name: finalName,
+                    brushSize: 50,
+                    opacity: 80,
+                    spacing: 25,
+                    hardness: 50,
+                    angle: 0,
+                    density: 100,
+                    tipPNG: tipUrl,
+                    pressureCurves: {}
+                };
+            },
+            
+            async processImage(file) {
+                try {
+                    const optimized = await ImageValidator.validateAlphaAndOptimise(file.content);
+                    const blob = new Blob([optimized], { type: 'image/png' });
+                    const url = URL.createObjectURL(blob);
+                    this.blobUrls.push(url);
+                    return url;
+                } catch (error) {
+                    Logger.warning(`Image processing failed: ${file.name}`);
+                    return this.createPlaceholderTip();
+                }
+            },
+            
+            createPlaceholderTip() {
+                const canvas = document.createElement('canvas');
+                canvas.width = canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                
+                const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 200);
+                gradient.addColorStop(0, 'rgba(255,255,255,1)');
+                gradient.addColorStop(0.7, 'rgba(200,200,200,1)');
+                gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, 512, 512);
+                
+                return canvas.toDataURL('image/png');
+            },
+            
+            async parseABR(file) {
+                Logger.info(`Parsing ABR: ${file.name}`);
+                return [await this.createBrushFromPNG(file, new Set())];
+            },
+            
+            async parseJSON(file) {
+                try {
+                    const text = new TextDecoder().decode(file.content);
+                    const data = JSON.parse(text);
+                    const brushes = [];
+                    
+                    if (data.name && data.brushSize) {
+                        brushes.push({
+                            name: UI.sanitizeName(data.name),
+                            brushSize: Math.round((data.brushSize || 0.5) * 100),
+                            opacity: Math.round((data.opacity || 0.8) * 100),
+                            spacing: Math.round((data.spacing || 0.25) * 100),
+                            hardness: Math.round((data.hardness || 0.5) * 100),
+                            tipPNG: this.createPlaceholderTip(),
+                            pressureCurves: data.curves || {}
+                        });
+                    }
+                    
+                    return brushes;
+                } catch (error) {
+                    Logger.warning(`JSON parse error: ${error.message}`);
+                    return [];
+                }
+            },
+            
+            cleanup() {
+                this.blobUrls.forEach(url => {
+                    if (url.startsWith('blob:')) {
+                        URL.revokeObjectURL(url);
+                    }
+                });
+                this.blobUrls = [];
+            }
+        };
 
-/*=====================================================================
-  UUID HANDLING
-=====================================================================*/
-const UUIDUtils = { 
-  uuidToBlob: function(uuid) {
-    const clean = uuid.replace(/-/g, '');
-    if (clean.length !== 32) return this.generateUuidBlob();
-    const bytes = new Uint8Array(16);
-    for (let i = 0; i < 16; i++) bytes[i] = parseInt(clean.substr(i * 2, 2), 16);
-    return bytes.buffer;
-  },
-  blobToUuid: function(blob) {
-    const bytes = new Uint8Array(blob);
-    let uuid = '';
-    for (let i = 0; i < 16; i++) uuid += bytes[i].toString(16).padStart(2, '0');
-    return `${uuid.substr(0,8)}-${uuid.substr(8,4)}-${uuid.substr(12,4)}-${uuid.substr(16,4)}-${uuid.substr(20,12)}`;
-  },
-  generateUuidBlob: function() {
-    const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-    return this.uuidToBlob(uuid);
-  }
-};
+        /*=====================================================================
+          SUT CONVERTER
+        =====================================================================*/
+        const SUTConverter = {
+            async createSUT(brush) {
+                const db = new SQL.Database();
+                
+                try {
+                    db.exec("BEGIN TRANSACTION");
+                    
+                    db.run(`CREATE TABLE Manager(
+                        _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ToolType INTEGER,
+                        Version INTEGER,
+                        RootUuid BLOB,
+                        CurrentNodeUuid BLOB
+                    )`);
+                    
+                    db.run(`CREATE TABLE Node(
+                        _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        NodeUuid BLOB,
+                        NodeName TEXT,
+                        NodeMaterialUuid TEXT
+                    )`);
+                    
+                    db.run(`CREATE TABLE MaterialFile(
+                        _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        FileData BLOB,
+                        MaterialUuid TEXT
+                    )`);
+                    
+                    const rootUuid = UUIDUtils.generateUuidBlob();
+                    const nodeUuid = UUIDUtils.generateUuidBlob();
+                    const materialUuid = UUIDUtils.generateUuidBlob();
+                    
+                    db.run(`INSERT INTO Manager (ToolType, Version, RootUuid, CurrentNodeUuid) 
+                           VALUES (2, 1, ?, ?)`, [rootUuid, nodeUuid]);
+                    
+                    db.run(`INSERT INTO Node (NodeUuid, NodeName, NodeMaterialUuid) 
+                           VALUES (?, ?, ?)`, [nodeUuid, brush.name, UUIDUtils.blobToUuid(materialUuid)]);
+                    
+                    const tipData = brush.tipPNG ? await (await fetch(brush.tipPNG)).arrayBuffer() : new Uint8Array(0);
+                    
+                    db.run(`INSERT INTO MaterialFile (FileData, MaterialUuid) 
+                           VALUES (?, ?)`, [tipData, UUIDUtils.blobToUuid(materialUuid)]);
+                    
+                    db.exec("COMMIT");
+                    
+                    const exported = db.export();
+                    db.close();
+                    
+                    return new Blob([exported], { type: 'application/octet-stream' });
+                } catch (error) {
+                    db.exec("ROLLBACK");
+                    db.close();
+                    throw error;
+                }
+            }
+        };
 
-/*=====================================================================
-  IMAGE VALIDATOR
-=====================================================================*/
-const ImageValidator = {
-  async validateAlphaAndOptimise(data, max = 1024) {
-    const b = new Blob([data], { type: 'image/png' });
-    const i = new Image(), u = URL.createObjectURL(b);
-    return new Promise((res, rej) => {
-      i.onload = () => {
-        URL.revokeObjectURL(u);
-        const c = document.createElement('canvas'); c.width = 512; c.height = 512;
-        const ctx = c.getContext('2d');
-        ctx.drawImage(i, 0, 0, 512, 512);
-        const imageData = ctx.getImageData(0, 0, 512, 512);
-        let hasAlpha = false;
-        for (let j = 3; j < imageData.data.length; j += 4) {
-          if (imageData.data[j] < 255) { hasAlpha = true; break; }
-        }
-        if (!hasAlpha) {
-          Logger.warning('No alpha channel - adding transparency');
-          for (let j = 3; j < imageData.data.length; j += 4) {
-            imageData.data[j] = 255 - imageData.data[j - 3]; // Use red channel for alpha (grayscale transparency)
-            imageData.data[j - 3] = imageData.data[j - 2] = imageData.data[j - 1] = 255; // Set color to white
-          }
-        }
-        ctx.putImageData(imageData, 0, 0);
-        c.toBlob(b => {
-          b.arrayBuffer().then(res).catch(err => { rej(err); });
-        }, 'image/png');
-      };
-      i.onerror = () => { URL.revokeObjectURL(u); rej(new Error('Invalid PNG')); };
-      i.src = u;
-    });
-  }
-};
+        /*=====================================================================
+          MAIN CONVERTER
+        =====================================================================*/
+        const Converter = {
+            async convert(brushes, format) {
+                const zip = new JSZip();
+                const compressionLevel = parseInt(document.getElementById('compressionLevel').value);
+                const totalBrushes = brushes.length;
+                
+                UI.showProgress(0);
+                
+                for (let i = 0; i < totalBrushes; i++) {
+                    const brush = brushes[i];
+                    
+                    try {
+                        if (format === 'sut') {
+                            const sutBlob = await SUTConverter.createSUT(brush);
+                            zip.file(`${brush.name}.sut`, sutBlob);
+                        } else if (format === 'png') {
+                            const pngResponse = await fetch(brush.tipPNG);
+                            const pngBlob = await pngResponse.blob();
+                            zip.file(`${brush.name}.png`, pngBlob);
+                        } else if (format === 'json') {
+                            const pngResponse = await fetch(brush.tipPNG);
+                            const pngBlob = await pngResponse.blob();
+                            zip.file(`${brush.name}.png`, pngBlob);
+                            zip.file(`${brush.name}.json`, JSON.stringify(brush, null, 2));
+                        }
+                        
+                        AppState.stats.brushesConverted++;
+                        UI.updateStats();
+                        UI.showProgress(((i + 1) / totalBrushes) * 100);
+                        
+                        if (i % 3 === 0) {
+                            await new Promise(resolve => setTimeout(resolve, 10));
+                        }
+                    } catch (error) {
+                        Logger.warning(`Failed to convert brush "${brush.name}": ${error.message}`);
+                    }
+                }
+                
+                return await zip.generateAsync({
+                    type: 'blob',
+                    compression: 'DEFLATE',
+                    compressionOptions: { level: compressionLevel }
+                });
+            }
+        };
 
-/*=====================================================================
-  FILE MANAGER
-=====================================================================*/
-const FileManager={ZIP_EXT:['zip','brushset','brush'],async handleFiles(files){
-  Logger.clear();UI.showStatus('Loading...','info');UI.disableConvertButton();AppState.files=[];AppState.stats.filesLoaded=0;
-  const proms=[];for(const f of files){const ext=f.name.split('.').pop().toLowerCase();
-    if(f.size===0)continue;this.ZIP_EXT.includes(ext)?proms.push(this.extractZip(f)):proms.push(this.addFile(f));}
-  await Promise.all(proms);AppState.stats.filesLoaded=AppState.files.length;AppState.filesLoaded=true;
-  UI.updateStats();Logger.success(`Loaded ${AppState.files.length} files`);
-  if(AppState.files.length&&SQL_READY){UI.enableConvertButton();UI.showStatus('Ready','success');}
-  else UI.showStatus(!SQL_READY?'Waiting for SQL...':'No valid files','error');
-},async addFile(f){try{const c=new Uint8Array(await f.arrayBuffer());
-  AppState.files.push({name:f.name,path:f.webkitRelativePath||f.name,content:c});}catch(e){Logger.warning(`Read failed: ${f.name}`);}},
-async extractZip(f){Logger.info(`Extracting ${f.name}`);try{const zip=await JSZip.loadAsync(await f.arrayBuffer());
-  const ps=[];zip.forEach((p,e)=>{if(!e.dir)ps.push(e.async('uint8array').then(c=>AppState.files.push({name:p.split('/').pop(),path:p,content:c})));});
-  await Promise.all(ps);Logger.success(`Extracted ${ps.length} files`);}catch(e){Logger.error(`Zip failed: ${e.message}`);}}};
-
-/*=====================================================================
-  BRUSH PARSER
-=====================================================================*/
-const BrushParser={urls:[],async parse(files){
-  this.cleanup();Logger.info('Parsing...');const groups=new Map();
-  for(const f of files){
-    const parts=f.path.split('/'), id=parts.length>1?parts[parts.length-2]:'root';
-    if(!groups.has(id))groups.set(id,{param:null,tips:[],grain:null,files:[]});
-    const g=groups.get(id);g.files.push(f);
-    if(f.name.match(/settings?\.json$/i)||f.name==='Brush.json')g.param=f;
-    else if(f.name.match(/(shape|tip|source)\.png$/i))g.tips.push(f);
-    else if(f.name==='grain.png'){g.grain=f;AppState.stats.texturesFound++;}
-    else if(f.name.endsWith('.abr'))g.param=f;
-  }
-  const brushes=[],names=new Set(),ph=this.placeholderTip();let phCount=0;
-  for(const [id,g] of groups){
-    if(!g.param&&id==='root')continue;let rawName=id,multi=[];
-    if(g.param){
-      const ext=g.param.name.toLowerCase();
-      if(ext.endsWith('.json')){
-        try{const txt=new TextDecoder().decode(g.param.content);const d=JSON.parse(txt);rawName=d.name||rawName;multi.push(d);}catch(e){Logger.warning(`JSON: ${e.message}`);}
-      }else if(ext.endsWith('.abr')){
-        try{multi=await this.parseABR(g.param.content);}catch(e){Logger.error(`ABR: ${e.message}`);continue;}
-      }
-    }else multi.push({});
-    for(let i=0;i<multi.length;i++){
-      const d=multi[i];
-      let name=UI.sanitizeName(d.name||rawName+(multi.length>1?`_${i+1}`:''));
-      let suf=1;while(names.has(name))name=UI.sanitizeName(rawName)+'_'+suf++;names.add(name);
-      const tip=d.tipData?d.tipData:(g.tips[0]?await this.processTip(g.tips[0]):ph);
-      if(tip===ph)phCount++;
-      const grain=g.grain?await this.processTip(g.grain):null;
-      const extraTips=await Promise.all(g.tips.slice(1).map(t=>this.processTip(t)));
-      brushes.push({
-        name,brushSize:Math.round((d.brushSize||0.5)*100),opacity:Math.round((d.opacity||0.8)*100),
-        spacing:Math.round((d.spacing||0.05)*100),hardness:Math.round((d.hardness||0.5)*100),
-        angle:Math.round((d.angle||0)*360),density:Math.round((d.density||1)*100),
-        wetMix:d.wetMix||0,textureMode:!!d.textureMode,scatterJitter:d.scatterJitter||0,
-        blendMode:this.mapBlendMode(d.blendMode||0),
-        sizePressure:d.sizePressure!==false,opacityPressure:d.opacityPressure!==false,
-        densityPressure:!!d.densityPressure,
-        tipPNG:tip,grainPNG:grain,extraTips,
-        pressureCurves:d.curves||{}
-      });
-    }
-  }
-  AppState.stats.brushesParsed=brushes.length;AppState.stats.placeholderTips=phCount;
-  if(phCount)Logger.warning(`${phCount} placeholder tips`);
-  Logger.success(`Parsed ${brushes.length} brushes`);
-  return brushes;
-},async processTip(f){try{const opt=await ImageValidator.validateAlphaAndOptimise(f.content);
-  const b=new Blob([opt],{type:'image/png'});const url=URL.createObjectURL(b);this.urls.push(url);return url;
-}catch(e){Logger.warning(`Tip error: ${e.message}`);return this.placeholderTip();}},
-placeholderTip(){const c=document.createElement('canvas');c.width=c.height=512;const ctx=c.getContext('2d');
-  const g=ctx.createRadialGradient(256,256,0,256,256,240);g.addColorStop(0,'#fff');g.addColorStop(.7,'#ccc');g.addColorStop(1,'rgba(255,255,255,0)');
-  ctx.fillStyle=g;ctx.fillRect(0,0,512,512);return c.toDataURL('image/png');},
-async parseABR(buf){
-  const view=new DataView(buf.buffer);let off=0;const brushes=[];
-  const sig=new TextDecoder().decode(buf.slice(0,4));
-  if(sig==='8BIM') return this.parseModernABR(buf);
-  
-  const ver=view.getUint16(off);off+=2;
-  if(ver>6){Logger.warning(`ABR v${ver} unsupported`);return [];}
-  const cnt=view.getUint16(off);off+=2;
-  
-  for(let i=0;i<cnt;i++){
-    const type=view.getUint16(off);off+=2;
-    const sz=view.getUint32(off);off+=4;
-    const start=off;
-    const brush={name:`ABR_${i+1}`,tipData:null,curves:{}};
-    brush.misc=view.getUint32(off);off+=4;
-    brush.spacing=view.getUint16(off)/10;off+=2;
-    if(type===1){
-      brush.diameter=view.getUint16(off);off+=2;
-      brush.roundness=view.getUint16(off)/100;off+=2;
-      brush.angle=view.getInt16(off);off+=2;
-      brush.hardness=view.getUint16(off)/100;off+=2;
-      brush.tipData=await this.computedTip(brush.diameter,brush.roundness,brush.angle,brush.hardness);
-    }else if(type===2){
-      const samp=await this.sampledBrush(view,off,sz);
-      Object.assign(brush,samp);
-    }
-    while(off<buf.length-8 && off<start+sz){
-      const chunkSig=new TextDecoder().decode(buf.slice(off,off+4));off+=4;
-      if(chunkSig==='curv'){
-        const chunkSz=view.getUint32(off);off+=4;
-        if(!chunkSz){off+=4;continue;}
-        const numPoints=view.getUint16(off);off+=2;
-        const points=[];
-        for(let p=0;p<numPoints;p++){
-          const x=view.getUint16(off)/65535;off+=2;
-          const y=view.getUint16(off)/65535;off+=2;
-          points.push([x,y]);
-        }
-        brush.curves.size=points;
-        brush.curves.opacity=points;
-        break;
-      }else{
-        const chunkSz=view.getUint32(off);off+=4;
-        if(chunkSz>0)off+=chunkSz+(chunkSz%2);
-      }
-    }
-    brushes.push(brush);
-    off=start+sz;
-  }
-  return brushes;
-},
-async parseModernABR(buf){
-  const res=[];let off=0;
-  while(off<buf.length-8){
-    const sig=new TextDecoder().decode(buf.slice(off,off+4));if(sig!=='8BIM')break;off+=4;
-    const type=new TextDecoder().decode(buf.slice(off,off+4));off+=4;
-    const len=view.getUint32(off,false);off+=4;
-    if(len+off>buf.length)break;
-    const chunk=buf.slice(off,off+len);off+=len+(len%2);
-    if(type==='samp'){
-      try{const s=await this.sampledChunk(chunk);
-        s.name=`Modern_${res.length+1}`;res.push(s);}catch(e){Logger.warning(`Samp chunk: ${e.message}`);}
-    }
-  }
-  if(!res.length){res.push({name:'Modern_Placeholder',brushSize:50,opacity:80,spacing:5,hardness:50,angle:0,tipData:this.placeholderTip()});}
-  return res;
-},
-async sampledChunk(chunk){
-  const view = new DataView(chunk.buffer); let off = 0;
-  off += 4; // version
-  const id = view.getUint32(off); off += 4;
-  const depth = view.getUint16(off); off += 2;
-  if (depth !== 8) throw new Error('Unsupported depth');
-  const top = view.getInt32(off); off += 4;
-  const left = view.getInt32(off); off += 4;
-  const bottom = view.getInt32(off); off += 4;
-  const right = view.getInt32(off); off += 4;
-  const w = right - left, h = bottom - top;
-  if(w<=0 || h<=0)throw new Error('Invalid dimensions');
-  const comp = view.getUint16(off); off += 2;
-  const imgData = await this.rleDecode(chunk.slice(off), w, h, comp);
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const ctx = c.getContext('2d'); const idata = ctx.createImageData(w, h);
-  for (let p = 0; p < imgData.length; p++) {
-    const g = imgData[p]; const idx = p * 4;
-    idata.data[idx] = idata.data[idx+1] = idata.data[idx+2] = 255; idata.data[idx+3] = 255 - g;
-  }
-  ctx.putImageData(idata, 0, 0);
-  return {tipData: c.toDataURL('image/png'), brushSize: Math.max(w,h)/100, hardness: 0.5};
-},
-async rleDecode(buf,w,h,comp){
-  const out = new Array(w*h).fill(0);
-  let off = 0;
-  if(comp === 0) {
-    for(let i=0; i<w*h; i++) out[i]=buf[off++];
-    return out;
-  }
-  for(let y=0;y<h;y++){
-    if(off>=buf.length-2)break;
-    const lineLen = new DataView(buf.buffer,buf.byteOffset+off).getUint16(0,false); off += 2;
-    let pos = 0, x=0;
-    while(pos < lineLen && x<w && off<buf.length){
-      const code = buf[off++]; pos++;
-      if(code >= 0){
-        const len = code + 1;
-        for(let k=0;k<len && x<w;k++) out[y*w+(x++)]=buf[off++];
-        pos += len;
-      }else if(code > -128){
-        const val = buf[off++]; pos++;
-        const len = -code + 1;
-        for(let k=0;k<len && x<w;k++) out[y*w+(x++)]=val;
-      }
-    }
-  }
-  return out;
-},
-async computedTip(d,r,a,h){
-  const c=document.createElement('canvas');c.width=c.height=d;const ctx=c.getContext('2d');
-  const cx=d/2,cy=d/2,rad=d/2;
-  ctx.save();ctx.translate(cx,cy);ctx.rotate(a*Math.PI/180);ctx.scale(1,r);
-  const grad=ctx.createRadialGradient(0,0,0,0,0,rad);
-  grad.addColorStop(0,'rgba(255,255,255,1)');grad.addColorStop(h,'rgba(255,255,255,1)');grad.addColorStop(1,'rgba(255,255,255,0)');
-  ctx.beginPath();ctx.arc(0,0,rad,0,Math.PI*2);ctx.fillStyle=grad;ctx.fill();
-  if(h<0.9){ctx.globalAlpha=0.1;
-    for(let i=0;i<100;i++){
-      const x=(Math.random()-0.5)*d,y=(Math.random()-0.5)*d,rr=Math.random()*3;
-      ctx.beginPath();ctx.arc(x,y,rr,0,Math.PI*2);ctx.fill();
-    }
-  }
-  ctx.restore();return c.toDataURL('image/png');
-},
-mapBlendMode(m){const map={0:0,1:1,2:2,3:3,4:4,5:5,6:6,7:3,8:1,9:2,10:1,11:5,12:6,13:0,14:0};
-  const c=map[m];if(c===undefined){Logger.warning(`Blend ${m} → Normal`);return 0;}return c;},
-cleanup(){this.urls.forEach(u=>u.startsWith('blob:')&&URL.revokeObjectURL(u));this.urls=[];}};
-
-/*=====================================================================
-  SUT CONVERTER (FULL SCHEMA + TRANSACTION + CLEANUP)
-=====================================================================*/
-const SUTConverter = {
-  createPressureCurve: function(points) {
-    points = points.sort((a,b) => a[0] - b[0]).map(p => [Math.max(0, Math.min(1, p[0])), Math.max(0, Math.min(1, p[1]))]);
-    if (points.length < 2) points = [[0,0], [1,1]];
-    const data = new ArrayBuffer(points.length * 4 + 2);
-    const view = new DataView(data);
-    view.setUint16(0, points.length, false);
-    for (let i = 0; i < points.length; i++) {
-      view.setUint16(2 + i * 4, Math.round(points[i][0] * 65535), false);
-      view.setUint16(4 + i * 4, Math.round(points[i][1] * 65535), false);
-    }
-    return data;
-  },
-  async createSUT(brush, id) {
-    const db = new SQL.Database();
-    try {
-      db.exec("BEGIN TRANSACTION");
-      
-      // Full Manager table
-      db.run(`CREATE TABLE Manager(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, ToolType INTEGER DEFAULT NULL, Version INTEGER DEFAULT NULL, RootUuid BLOB DEFAULT NULL, CurrentNodeUuid BLOB DEFAULT NULL, MaxVariantID INTEGER DEFAULT NULL, CommonVariantID INTEGER DEFAULT NULL, ObjectNodeUuid BLOB DEFAULT NULL, PressureGraph BLOB DEFAULT NULL, SavedCount INTEGER DEFAULT NULL, PressureGraphInitialized INTEGER DEFAULT NULL, UsePressureFile INTEGER DEFAULT NULL)`);
-      // Full Node table
-      db.run(`CREATE TABLE Node(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, NodeUuid BLOB DEFAULT NULL, NodeName TEXT DEFAULT NULL, NodeShortCutKey INTEGER DEFAULT NULL, NodeLock INTEGER DEFAULT NULL, NodeInputOp INTEGER DEFAULT NULL, NodeOutputOp INTEGER DEFAULT NULL, NodeRangeOp INTEGER DEFAULT NULL, NodeIcon INTEGER DEFAULT NULL, NodeIconColor INTEGER DEFAULT NULL, NodeHidden INTEGER DEFAULT NULL, NodeInstalledState INTEGER DEFAULT NULL, NodeInstalledVersion INTEGER DEFAULT NULL, NodeHideByGrade INTEGER DEFAULT NULL, NodeDefaultIdentifier INTEGER DEFAULT NULL, NodeMaterialIDExists INTEGER DEFAULT NULL, NodeMaterialContentID INTEGER DEFAULT NULL, NodeMaterialUuid TEXT DEFAULT NULL, NodeNextUuid BLOB DEFAULT NULL, NodeFirstChildUuid BLOB DEFAULT NULL, NodeSelectedUuid BLOB DEFAULT NULL, NodeVariantID INTEGER DEFAULT NULL, NodeInitVariantID INTEGER DEFAULT NULL, NodeCustomIcon BLOB DEFAULT NULL)`);
-      // Full MaterialFile table
-      db.run(`CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, InstallFolder INTEGER DEFAULT NULL, OriginalPath TEXT DEFAULT NULL, OldMaterial INTEGER DEFAULT NULL, FileData BLOB DEFAULT NULL, CatalogPath TEXT DEFAULT NULL, MaterialUuid TEXT DEFAULT NULL)`);
-      // PressureCurve table
-      db.run(`CREATE TABLE PressureCurve(CurveID INTEGER PRIMARY KEY AUTOINCREMENT, PropertyID INTEGER, CurveType TEXT, CurveData BLOB)`);
-      
-      // Generate UUIDs
-      const rootUuid = UUIDUtils.generateUuidBlob();
-      const nodeUuid = UUIDUtils.generateUuidBlob();
-      const materialUuid = UUIDUtils.generateUuidBlob();
-      const objectUuid = UUIDUtils.generateUuidBlob();
-      const selectedUuid = UUIDUtils.generateUuidBlob();
-      const variantId = 1; // Simple variant ID
-
-      // Insert Manager with full columns
-      db.run(`INSERT INTO Manager (ToolType, Version, RootUuid, CurrentNodeUuid, MaxVariantID, CommonVariantID, ObjectNodeUuid, PressureGraph, SavedCount, PressureGraphInitialized, UsePressureFile) VALUES (2, 1, ?, ?, 1, 1, ?, NULL, 1, 1, 0)`, [rootUuid, nodeUuid, objectUuid]);
-      
-      // Insert Node with full columns
-      db.run(`INSERT INTO Node (NodeUuid, NodeName, NodeInputOp, NodeOutputOp, NodeRangeOp, NodeMaterialIDExists, NodeMaterialContentID, NodeMaterialUuid, NodeSelectedUuid, NodeVariantID, NodeInitVariantID) VALUES (?, ?, 1, 1, 0, 1, 1, ?, ?, ?, 1)`, [nodeUuid, brush.name, UUIDUtils.blobToUuid(materialUuid), selectedUuid, variantId]);
-      
-      // Process tip PNG
-      const tipData = brush.tipPNG ? await (await fetch(brush.tipPNG)).arrayBuffer() : new Uint8Array(0);
-      
-      // Insert MaterialFile with full columns
-      db.run(`INSERT INTO MaterialFile (InstallFolder, OriginalPath, OldMaterial, FileData, CatalogPath, MaterialUuid) VALUES (0, '', 0, ?, '', ?)`, [tipData, UUIDUtils.blobToUuid(materialUuid)]);
-      
-      // Insert PressureCurve for size and opacity
-      const defaultCurve = [[0,0],[1,1]];
-      if (brush.sizePressure) {
-        const curveData = this.createPressureCurve(brush.pressureCurves.size || defaultCurve);
-        db.run(`INSERT INTO PressureCurve (PropertyID, CurveType, CurveData) VALUES (1, 'size', ?)`, [curveData]);
-      }
-      if (brush.opacityPressure) {
-        const curveData = this.createPressureCurve(brush.pressureCurves.opacity || defaultCurve);
-        db.run(`INSERT INTO PressureCurve (PropertyID, CurveType, CurveData) VALUES (1, 'opacity', ?)`, [curveData]);
-      }
-      
-      // Update Manager PressureGraph
-      const mainCurve = brush.pressureCurves.size || brush.pressureCurves.opacity || defaultCurve;
-      const pressureGraph = this.createPressureCurve(mainCurve);
-      db.run(`UPDATE Manager SET PressureGraph = ? WHERE _PW_ID = 1`, [pressureGraph]);
-      
-      db.exec("COMMIT");
-      const out = db.export();
-      db.close();
-      return new Blob([out], {type: 'application/octet-stream'});
-    } catch(e) {
-      db.exec("ROLLBACK");
-      db.close();
-      Logger.error(`SUT creation error: ${e.message}`);
-      throw e;
-    }
-  }
-};
-
-/*=====================================================================
-  MAIN CONVERTER
-=====================================================================*/
-const Converter={async convert(brushes,format){
-  const zip=new JSZip();const lvl=parseInt(document.getElementById('compressionLevel').value);const total=brushes.length;
-  if(format==='sut'){
-    for(let i=0;i<total;i++){
-      if(i%5===0)await new Promise(r=>setTimeout(r,1));
-      try{const blob=await SUTConverter.createSUT(brushes[i],i);zip.file(`${brushes[i].name}.sut`,blob);
-        AppState.stats.brushesConverted++;UI.updateStats();UI.showProgress(((i+1)/total)*100);}catch(e){Logger.warning(`SUT failed: ${e.message}`);}
-    }
-  } else if(format==='png'){
-    for(let i=0;i<total;i++){
-      if(i%5===0)await new Promise(r=>setTimeout(r,1));
-      try{
-        const pngData = await (await fetch(brushes[i].tipPNG)).arrayBuffer();
-        zip.file(`${brushes[i].name}.png`, pngData);
-        AppState.stats.brushesConverted++;UI.updateStats();UI.showProgress(((i+1)/total)*100);
-      }catch(e){Logger.warning(`PNG export failed: ${e.message}`);}
-    }
-  } else if(format==='json'){
-    for(let i=0;i<total;i++){
-      if(i%5===0)await new Promise(r=>setTimeout(r,1));
-      try{
-        const pngData = await (await fetch(brushes[i].tipPNG)).arrayBuffer();
-        zip.file(`${brushes[i].name}.png`, pngData);
-        zip.file(`${brushes[i].name}.json`, JSON.stringify(brushes[i], null, 2));
-        AppState.stats.brushesConverted++;UI.updateStats();UI.showProgress(((i+1)/total)*100);
-      }catch(e){Logger.warning(`JSON export failed: ${e.message}`);}
-    }
-  }
-  return zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:lvl}});
-}};
-
-/*=====================================================================
-  EVENT HANDLERS
-=====================================================================*/
-UI.init();
-UI.e.dropZone.addEventListener('dragover',e=>{e.preventDefault();UI.e.dropZone.classList.add('dragover');});
-UI.e.dropZone.addEventListener('dragleave',()=>UI.e.dropZone.classList.remove('dragover'));
-UI.e.dropZone.addEventListener('drop',async e=>{e.preventDefault();UI.e.dropZone.classList.remove('dragover');
-  if(e.dataTransfer.files.length>0)await FileManager.handleFiles(Array.from(e.dataTransfer.files));});
-UI.e.browseFilesBtn.addEventListener('click',()=>{UI.e.fileInput.value='';UI.e.fileInput.click();});
-UI.e.fileInput.addEventListener('change',e=>{if(e.target.files.length>0)FileManager.handleFiles(e.target.files);});
-UI.e.browseFolderBtn.addEventListener('click',()=>{UI.e.folderInput.value='';UI.e.folderInput.click();});
-UI.e.folderInput.addEventListener('change',e=>{if(e.target.files.length>0)FileManager.handleFiles(e.target.files);});
-UI.e.convertBtn.addEventListener('click',async ()=>{
-  if(AppState.converting)return;AppState.converting=true;UI.disableConvertButton();Logger.clear();
-  try{UI.showStatus('Parsing...','info');const brushes=await BrushParser.parse(AppState.files);
-    if(!brushes.length)throw new Error('No brushes found');
-    const fmt=document.getElementById('targetFormat').value;
-    const pkg=UI.sanitizeName(document.getElementById('packageName').value);
-    UI.showStatus(`Converting ${brushes.length} → ${fmt.toUpperCase()}...`,'info');
-    const blob=await Converter.convert(brushes,fmt);
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${pkg}_${fmt}_${Date.now()}.zip`;
-    a.click();URL.revokeObjectURL(a.href);UI.showStatus('Success!','success');
-    Logger.success(`Download ready: ${(blob.size/1024/1024).toFixed(2)} MB`);
-  }catch(e){Logger.error(e.message);UI.showStatus('Error: '+e.message.substring(0,50),'error');}
-  finally{AppState.converting=false;UI.enableConvertButton();BrushParser.cleanup();}
-});
-
-/*=====================================================================
-  STARTUP
-=====================================================================*/
-Logger.info('CSP Brush Converter Pro - Ultimate V5 (Fixed)');
-Logger.info('Full schema | UUID blobs | Curves | ABR fixed | PNG alpha | Transactions | Ready!');
-</script>
+        /*=====================================================================
+          EVENT HANDLERS & INITIALIZATION
+        =====================================================================*/
+        window.addEventListener('load', async () => {
+            try {
+                const sqlModule = await initSqlJs({
+                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+                });
+                SQL = sqlModule;
+                SQL_READY = true;
+                Logger.info('SQL.js engine ready');
+            } catch (error) {
+                Logger.error('SQL.js initialization failed: ' + error.message);
+                UI.showStatus('Database engine error', 'error');
+            }
+            
+            UI.init();
+            
+            // File import handlers
+            UI.e.importFilesBtn.addEventListener('click', () => {
+                UI.e.fileInput.value = '';
+                UI.e.fileInput.click();
+            });
+            
+            UI.e.importZipBtn.addEventListener('click', () => {
+                UI.e.zipInput.value = '';
+                UI.e.zipInput.click();
+            });
+            
+            UI.e.importFolderBtn.addEventListener('click', () => {
+                if (UI.e.folderInput.webkitdirectory !== undefined) {
+                    UI.e.folderInput.value = '';
+                    UI.e.folderInput.click();
+                } else {
+                    Logger.warning('Folder selection not supported in this browser');
+                    UI.showStatus('Folder selection requires Chrome/Edge', 'warning');
+                }
+            });
+            
+            // File input change handlers
+            UI.e.fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    FileManager.handleFiles(Array.from(e.target.files));
+                }
+            });
+            
+            UI.e.zipInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    FileManager.handleFiles(Array.from(e.target.files));
+                }
+            });
+            
+            UI.e.folderInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    FileManager.handleFiles(Array.from(e.target.files));
+                }
+            });
+            
+            // Drag and drop
+            UI.e.dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                UI.e.dropZone.classList.add('dragover');
+            });
+            
+            UI.e.dropZone.addEventListener('dragleave', () => {
+                UI.e.dropZone.classList.remove('dragover');
+            });
+            
+            UI.e.dropZone.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                UI.e.dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length > 0) {
+                    await FileManager.handleFiles(Array.from(e.dataTransfer.files));
+                }
+            });
+            
+            // Convert button
+            UI.e.convertBtn.addEventListener('click', async () => {
+                if (AppState.converting) return;
+                
+                AppState.converting = true;
+                UI.disableConvertButton();
+                Logger.clear();
+                
+                try {
+                    UI.showStatus('Parsing brushes...', 'info');
+                    const brushes = await BrushParser.parse(AppState.files);
+                    
+                    if (brushes.length === 0) {
+                        throw new Error('No valid brushes found in the loaded files');
+                    }
+                    
+                    const format = UI.e.targetFormat.value;
+                    const packageName = UI.sanitizeName(document.getElementById('packageName').value);
+                    
+                    UI.showStatus(`Converting ${brushes.length} brushes to ${format.toUpperCase()}...`, 'info');
+                    const resultBlob = await Converter.convert(brushes, format);
+                    
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = URL.createObjectURL(resultBlob);
+                    downloadLink.download = `${packageName}_${format}_${Date.now()}.zip`;
+                    downloadLink.click();
+                    URL.revokeObjectURL(downloadLink.href);
+                    
+                    UI.showStatus('Conversion complete!', 'success');
+                    Logger.success(`Download ready: ${(resultBlob.size / 1024 / 1024).toFixed(2)} MB`);
+                    Logger.success(`Converted ${brushes.length} brushes successfully`);
+                    
+                } catch (error) {
+                    Logger.error('Conversion failed: ' + error.message);
+                    UI.showStatus('Error: ' + error.message.substring(0, 50), 'error');
+                } finally {
+                    AppState.converting = false;
+                    BrushParser.cleanup();
+                    
+                    if (AppState.filesLoaded) {
+                        UI.enableConvertButton();
+                    }
+                }
+            });
+            
+            Logger.info('CSP Brush Converter Pro - Ultimate V5 Ready!');
+            Logger.info('Drag and drop brush files or use the import buttons above');
+        });
+    </script>
 </body>
 </html>
