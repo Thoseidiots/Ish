@@ -39,6 +39,8 @@
         .btn-secondary:hover:not(:disabled){box-shadow:0 6px 20px rgba(108,117,125,.6)}
         .btn-danger{background:linear-gradient(135deg,#dc3545 0%,#c82333 100%);box-shadow:0 4px 15px rgba(220,53,69,.4)}
         .btn-danger:hover:not(:disabled){box-shadow:0 6px 20px rgba(220,53,69,.6)}
+        .btn-success{background:linear-gradient(135deg,#28a745 0%,#20c997 100%);box-shadow:0 4px 15px rgba(40,167,69,.4)}
+        .btn-success:hover:not(:disabled){box-shadow:0 6px 20px rgba(40,167,69,.6)}
         .status-bar{background:#e9ecef;padding:15px;border-radius:8px;margin-bottom:20px;display:none;align-items:center;gap:10px}
         .status-bar.show{display:flex}
         .status-bar.success{background:#d4edda;color:#155724}
@@ -76,14 +78,22 @@
         .footer{text-align:center;padding:20px;margin-top:30px;color:rgba(255,255,255,.7);font-size:.9em}
         .advanced-settings{background:#fff3cd;padding:15px;border-radius:8px;margin-top:20px}
         .advanced-settings h4{margin-bottom:10px;color:#856404}
-        .warning-banner{background:#fff3cd;border:1px solid #ffeaa7;border-radius:8px;padding:15px;margin-bottom:20px;color:#856404}
+        .info-banner{background:#d1ecf1;border:1px solid #bee5eb;border-radius:8px;padding:15px;margin-bottom:20px;color:#0c5460}
+        .template-selector{background:#e7f3ff;border:2px solid #667eea;border-radius:10px;padding:20px;margin-bottom:20px}
+        .template-selector h3{color:#667eea;margin-bottom:15px}
+        .template-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px}
+        .template-option{background:#fff;padding:15px;border-radius:8px;border:1px solid #dee2e6;cursor:pointer;transition:all .3s}
+        .template-option:hover{border-color:#667eea;box-shadow:0 4px 12px rgba(102,126,234,.2)}
+        .template-option.selected{border-color:#667eea;background:#f8f9ff}
+        .template-option h4{margin-bottom:5px;color:#495057}
+        .template-option p{font-size:.85em;color:#6c757d;margin-bottom:10px}
         .loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:9999}
         .loading-overlay.show{display:flex}
         .loading-spinner{width:50px;height:50px;border:5px solid #f3f3f3;border-top:5px solid #667eea;border-radius:50%;animation:spin 1s linear infinite}
         .button-group{display:flex;gap:10px;margin-bottom:20px}
         .button-group .btn{flex:1}
         @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
-        @media(max-width:768px){.controls{grid-template-columns:1fr}.import-options{grid-template-columns:1fr}.curve-canvas{width:100% !important;height:200px !important}.button-group{flex-direction:column}}
+        @media(max-width:768px){.controls{grid-template-columns:1fr}.import-options{grid-template-columns:1fr}.curve-canvas{width:100% !important;height:200px !important}.button-group{flex-direction:column}.template-options{grid-template-columns:1fr}}
         .failed-brushes{background:#f8d7da;border:1px solid #f5c6cb;border-radius:8px;padding:15px;margin-top:20px;color:#721c24}
         .failed-brushes h4{margin-bottom:10px}
         .failed-brushes ul{list-style-position:inside;margin:0}
@@ -96,26 +106,42 @@
     <div class="container">
         <div class="header">
             <h1>CSP .sut Brush Converter</h1>
-            <p>Professional Edition - Full CSP Database Schema Support</p>
+            <p>Professional Edition - Convert your brushes to Clip Studio Paint format</p>
         </div>
         <div class="content">
             <div id="dropZone">
                 <svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z"/></svg>
-                <h2 style="color:#667eea;margin-bottom:10px">Drop Files Here</h2>
-                <p style="color:#6c757d;margin-bottom:20px">Supports: PNG, ABR, ZIP, .brushset files</p>
+                <h2 style="color:#667eea;margin-bottom:10px">Drop Brush Files Here</h2>
+                <p style="color:#6c757d;margin-bottom:20px">Supports: PNG, JPG, ABR, ZIP, .brushset files</p>
                 <div class="import-options">
-                    <button class="btn" id="importFilesBtn">Import Files</button>
+                    <button class="btn" id="importFilesBtn">Import Brush Files</button>
                     <button class="btn" id="importZipBtn">Import ZIP/Brushset</button>
-                    <button class="btn btn-secondary" id="loadTemplateBtn">Load SUT Template</button>
-                    <button class="btn btn-danger" id="clearAllBtn">Clear All</button>
+                    <button class="btn btn-secondary" id="clearAllBtn">Clear All</button>
                 </div>
-                <input type="file" id="fileInput" multiple accept=".png,.abr,.zip,.brushset" style="display:none">
+                <input type="file" id="fileInput" multiple accept=".png,.jpg,.jpeg,.abr,.zip,.brushset" style="display:none">
                 <input type="file" id="zipInput" accept=".zip,.brushset" style="display:none">
-                <input type="file" id="templateInput" accept=".sut" style="display:none">
             </div>
             
-            <div class="warning-banner" id="warningBanner" style="display:none">
-                <strong>⚠️ Warning:</strong> <span id="warningText"></span>
+            <div class="info-banner" id="infoBanner" style="display:none">
+                <strong>ℹ️ Info:</strong> <span id="infoText"></span>
+            </div>
+            
+            <div class="template-selector" id="templateSelector" style="display:none">
+                <h3>📋 Select SUT Template (Required for .sut format)</h3>
+                <p style="color:#6c757d;margin-bottom:15px">A template provides the database structure needed to create SUT files. Choose one of the options below:</p>
+                <div class="template-options">
+                    <div class="template-option" id="useDefaultTemplate">
+                        <h4>🎨 Use Default Template</h4>
+                        <p>Recommended for most brushes. Creates standard CSP brushes with basic settings.</p>
+                        <button class="btn btn-success" style="width:100%;margin-top:10px">Use Default</button>
+                    </div>
+                    <div class="template-option" id="useCustomTemplate">
+                        <h4>📁 Load Custom Template</h4>
+                        <p>Use your own .sut file as a template for specific brush types or custom settings.</p>
+                        <button class="btn btn-secondary" style="width:100%;margin-top:10px">Load Template</button>
+                    </div>
+                </div>
+                <input type="file" id="templateInput" accept=".sut" style="display:none">
             </div>
             
             <div class="stats" id="stats" style="display:none">
@@ -282,7 +308,7 @@
                     if (retryCount < maxRetries) {
                         await new Promise(resolve => setTimeout(resolve, 1000));
                     } else {
-                        UI.showWarning('SQL.js initialization failed - SUT conversion disabled. Please check your internet connection and refresh the page.');
+                        UI.showInfo('SQL.js initialization failed - SUT conversion disabled. Please check your internet connection and refresh the page.');
                         UI.showStatus('SQL.js initialization failed - SUT conversion disabled', 'error');
                     }
                 }
@@ -326,8 +352,10 @@
                 templateInput: document.getElementById('templateInput'),
                 importFilesBtn: document.getElementById('importFilesBtn'),
                 importZipBtn: document.getElementById('importZipBtn'),
-                loadTemplateBtn: document.getElementById('loadTemplateBtn'),
                 clearAllBtn: document.getElementById('clearAllBtn'),
+                useDefaultTemplate: document.getElementById('useDefaultTemplate'),
+                useCustomTemplate: document.getElementById('useCustomTemplate'),
+                templateSelector: document.getElementById('templateSelector'),
                 convertBtn: document.getElementById('convertBtn'),
                 cancelBtn: document.getElementById('cancelBtn'),
                 log: document.getElementById('log'),
@@ -343,8 +371,8 @@
                 formatInfo: document.getElementById('formatInfo'),
                 previewContainer: document.getElementById('previewContainer'),
                 previewGrid: document.getElementById('previewGrid'),
-                warningBanner: document.getElementById('warningBanner'),
-                warningText: document.getElementById('warningText'),
+                infoBanner: document.getElementById('infoBanner'),
+                infoText: document.getElementById('infoText'),
                 loadingOverlay: document.getElementById('loadingOverlay'),
                 failedBrushesContainer: document.getElementById('failedBrushesContainer'),
                 failedBrushesList: document.getElementById('failedBrushesList')
@@ -385,11 +413,24 @@
                 
                 // Format info update
                 this.elements.outputFormat.addEventListener('change', () => {
+                    const format = this.elements.outputFormat.value;
                     const info = {
                         'sut': 'Full CSP brush files with metadata and pressure curves',
-                        'png': 'Brush tip images only'
+                        'png': 'Brush tip images only (no template needed)'
                     };
-                    this.elements.formatInfo.textContent = info[this.elements.outputFormat.value] || '';
+                    this.elements.formatInfo.textContent = info[format] || '';
+                    
+                    // Show/hide template selector based on format
+                    if (format === 'sut' && AppState.filesLoaded && !AppState.templateLoaded) {
+                        this.elements.templateSelector.style.display = 'block';
+                        this.showInfo('SUT format requires a template. Choose default or load a custom template below.');
+                    } else if (format === 'png') {
+                        this.elements.templateSelector.style.display = 'none';
+                        this.hideInfo();
+                        if (AppState.filesLoaded) {
+                            this.enableConvertButton();
+                        }
+                    }
                 });
                 
                 // Setup event listeners
@@ -401,12 +442,17 @@
                     this.elements.zipInput.click();
                 });
                 
-                this.elements.loadTemplateBtn.addEventListener('click', () => {
-                    this.elements.templateInput.click();
-                });
-                
                 this.elements.clearAllBtn.addEventListener('click', () => {
                     this.clearAll();
+                });
+                
+                // Template options
+                this.elements.useDefaultTemplate.addEventListener('click', () => {
+                    TemplateManager.loadDefaultTemplate();
+                });
+                
+                this.elements.useCustomTemplate.addEventListener('click', () => {
+                    this.elements.templateInput.click();
                 });
                 
                 this.elements.fileInput.addEventListener('change', (e) => {
@@ -447,26 +493,7 @@
                     
                     if (e.dataTransfer.files.length > 0) {
                         const files = Array.from(e.dataTransfer.files);
-                        // Check if any files are templates
-                        const hasTemplate = files.some(f => f.name.toLowerCase().endsWith('.sut'));
-                        
-                        if (hasTemplate && !AppState.templateLoaded) {
-                            // Load first template file found
-                            for (const file of files) {
-                                if (file.name.toLowerCase().endsWith('.sut')) {
-                                    await TemplateManager.loadTemplate(file);
-                                    break;
-                                }
-                            }
-                            
-                            // Remove template files from the list
-                            const nonTemplates = files.filter(f => !f.name.toLowerCase().endsWith('.sut'));
-                            if (nonTemplates.length > 0) {
-                                await FileManager.handleFiles(nonTemplates);
-                            }
-                        } else {
-                            await FileManager.handleFiles(files);
-                        }
+                        await FileManager.handleFiles(files);
                     }
                 });
                 
@@ -523,7 +550,8 @@
                 this.elements.previewGrid.innerHTML = '';
                 this.elements.failedBrushesContainer.style.display = 'none';
                 this.elements.failedBrushesList.innerHTML = '';
-                this.hideWarning();
+                this.elements.templateSelector.style.display = 'none';
+                this.hideInfo();
                 this.disableConvertButton();
                 this.elements.cancelBtn.disabled = true;
                 
@@ -534,7 +562,7 @@
                 
                 Logger.clear();
                 Logger.info('Application reset - ready for new files');
-                this.showStatus('Ready - load files and a template to begin', 'success');
+                this.showStatus('Ready - load brush files to begin', 'success');
             },
             showStatus(message, type = 'info') {
                 this.elements.statusBar.className = `status-bar show ${type}`;
@@ -544,12 +572,12 @@
                 this.elements.progressBar.classList.add('show');
                 this.elements.progressFill.style.width = percent + '%';
             },
-            showWarning(message) {
-                this.elements.warningBanner.style.display = 'block';
-                this.elements.warningText.textContent = message;
+            showInfo(message) {
+                this.elements.infoBanner.style.display = 'block';
+                this.elements.infoText.textContent = message;
             },
-            hideWarning() {
-                this.elements.warningBanner.style.display = 'none';
+            hideInfo() {
+                this.elements.infoBanner.style.display = 'none';
             },
             showLoading(show) {
                 if (show) {
@@ -603,7 +631,10 @@
                     .join('');
             },
             enableConvertButton() {
-                this.elements.convertBtn.disabled = false;
+                const format = this.elements.outputFormat.value;
+                if (format === 'png' || (format === 'sut' && AppState.templateLoaded)) {
+                    this.elements.convertBtn.disabled = false;
+                }
             },
             disableConvertButton() {
                 this.elements.convertBtn.disabled = true;
@@ -892,9 +923,90 @@
             }
         };
         
-        // Template manager with caching
+        // Template manager with default template
         const TemplateManager = {
             templateCache: new Map(),
+            async loadDefaultTemplate() {
+                try {
+                    UI.showLoading(true);
+                    UI.showStatus('Loading default SUT template...', 'info');
+                    Logger.info('Loading default SUT template');
+                    
+                    // Create a minimal valid SUT template
+                    const templateData = await this.createDefaultSUTTemplate();
+                    
+                    SUT_TEMPLATE = templateData;
+                    AppState.templateLoaded = true;
+                    
+                    UI.elements.templateSelector.style.display = 'none';
+                    UI.hideInfo();
+                    
+                    Logger.success('Default SUT template loaded successfully');
+                    UI.showStatus('Default template loaded - ready to convert', 'success');
+                    
+                    if (AppState.filesLoaded && AppState.files.length > 0) {
+                        UI.enableConvertButton();
+                    }
+                    
+                    UI.showLoading(false);
+                    return true;
+                } catch (error) {
+                    Logger.error(`Failed to load default template: ${error.message}`);
+                    UI.showStatus('Error loading default template', 'error');
+                    UI.showLoading(false);
+                    return false;
+                }
+            },
+            async createDefaultSUTTemplate() {
+                // Create a minimal but valid CSP SUT database
+                const db = new SQL.Database();
+                
+                // Create required tables
+                db.run(`CREATE TABLE Manager (
+                    _PW_ID INTEGER PRIMARY KEY,
+                    CurrentNodeUuid BLOB,
+                    SavedCount INTEGER DEFAULT 1
+                )`);
+                
+                db.run(`CREATE TABLE Node (
+                    _PW_ID INTEGER PRIMARY KEY,
+                    NodeName TEXT,
+                    NodeMaterialUuid BLOB,
+                    NodeVariantID TEXT
+                )`);
+                
+                db.run(`CREATE TABLE MaterialFile (
+                    _PW_ID INTEGER PRIMARY KEY,
+                    MaterialUuid BLOB,
+                    FileData BLOB
+                )`);
+                
+                db.run(`CREATE TABLE Variant (
+                    _PW_ID INTEGER PRIMARY KEY,
+                    VariantID TEXT,
+                    VariantData BLOB
+                )`);
+                
+                // Insert default manager record
+                db.run("INSERT INTO Manager (_PW_ID, CurrentNodeUuid, SavedCount) VALUES (1, ?, 1)", 
+                       [UUIDUtils.generateUuidBlob()]);
+                
+                // Create default node and material
+                const nodeUuid = UUIDUtils.generateUuidBlob();
+                const materialUuid = UUIDUtils.generateUuidBlob();
+                
+                db.run("INSERT INTO Node (_PW_ID, NodeName, NodeMaterialUuid, NodeVariantID) VALUES (1, 'Default Brush', ?, ?)",
+                       [materialUuid, UUIDUtils.generateUuid().replace(/-/g, '')]);
+                
+                db.run("INSERT INTO MaterialFile (_PW_ID, MaterialUuid, FileData) VALUES (1, ?, ?)",
+                       [materialUuid, new Uint8Array([0])]); // Empty placeholder
+                
+                // Create default variant
+                db.run("INSERT INTO Variant (_PW_ID, VariantID, VariantData) VALUES (1, ?, ?)",
+                       [UUIDUtils.generateUuid().replace(/-/g, ''), new Uint8Array([0])]);
+                
+                return db.export();
+            },
             async loadTemplate(file) {
                 try {
                     UI.showLoading(true);
@@ -908,7 +1020,9 @@
                         AppState.templateLoaded = true;
                         Logger.info('Using cached template');
                         UI.showStatus('Template loaded from cache - ready for conversion', 'success');
-                        UI.hideWarning();
+                        
+                        UI.elements.templateSelector.style.display = 'none';
+                        UI.hideInfo();
                         
                         if (AppState.filesLoaded && AppState.files.length > 0) {
                             UI.enableConvertButton();
@@ -934,9 +1048,11 @@
                     // Cache the template
                     this.templateCache.set(cacheKey, SUT_TEMPLATE);
                     
+                    UI.elements.templateSelector.style.display = 'none';
+                    UI.hideInfo();
+                    
                     Logger.success('SUT template loaded successfully');
                     UI.showStatus('Template loaded - ready for conversion', 'success');
-                    UI.hideWarning();
                     
                     if (AppState.filesLoaded && AppState.files.length > 0) {
                         UI.enableConvertButton();
@@ -981,7 +1097,7 @@
                 try {
                     // Check file count limit
                     if (files.length > AppState.maxFiles) {
-                        UI.showWarning(`Too many files selected. Only the first ${AppState.maxFiles} files will be processed.`);
+                        UI.showInfo(`Too many files selected. Only the first ${AppState.maxFiles} files will be processed.`);
                         files = files.slice(0, AppState.maxFiles);
                     }
                     
@@ -1015,12 +1131,19 @@
                         return;
                     }
                     
-                    if (AppState.templateLoaded) {
+                    const format = UI.elements.outputFormat.value;
+                    if (format === 'png') {
                         UI.enableConvertButton();
-                        UI.showStatus('Ready to convert', 'success');
-                    } else {
-                        UI.showWarning('Files loaded - please load a SUT template to continue');
-                        UI.showStatus('Files loaded - please load a SUT template to continue', 'info');
+                        UI.showStatus('Ready to convert to PNG format', 'success');
+                    } else if (format === 'sut') {
+                        if (AppState.templateLoaded) {
+                            UI.enableConvertButton();
+                            UI.showStatus('Ready to convert', 'success');
+                        } else {
+                            UI.elements.templateSelector.style.display = 'block';
+                            UI.showInfo('SUT format requires a template. Choose default or load a custom template below.');
+                            UI.showStatus('Files loaded - select a template to continue', 'info');
+                        }
                     }
                 } catch (error) {
                     Logger.error('Failed to load files: ' + error.message);
@@ -1529,220 +1652,226 @@
                 }
             },
             createVariantBlob(params, settings) {
-                // This creates a simplified variant blob that CSP will accept
-                // Real implementation would need to match CSP's exact binary format
+                // This creates a simplified binary blob for CSP variant data
+                // Real CSP variant data is much more complex
+                const data = new DataView(new ArrayBuffer(256));
+                let offset = 0;
                 
-                // Create a JSON representation of the settings
-                const variantData = {
-                    version: 1,
-                    brushSize: params.brushSize,
-                    opacity: params.opacity,
-                    spacing: params.spacing,
-                    hardness: params.hardness,
-                    angle: params.angle,
-                    density: params.density,
-                    wetMix: params.wetMix,
-                    textureMode: params.textureMode,
-                    sizePressure: params.sizePressure,
-                    opacityPressure: params.opacityPressure,
-                    densityPressure: params.densityPressure,
-                    pressureCurves: {
-                        size: Array.from(PressureCurveUtils.getCurveData('size')),
-                        opacity: Array.from(PressureCurveUtils.getCurveData('opacity')),
-                        density: Array.from(PressureCurveUtils.getCurveData('density'))
-                    }
-                };
+                // Write basic parameters as 32-bit floats
+                data.setFloat32(offset, params.brushSize, true); offset += 4;
+                data.setFloat32(offset, params.opacity / 100, true); offset += 4;
+                data.setFloat32(offset, params.spacing / 100, true); offset += 4;
+                data.setFloat32(offset, params.hardness / 100, true); offset += 4;
+                data.setFloat32(offset, params.angle * Math.PI / 180, true); offset += 4;
+                data.setFloat32(offset, params.density / 100, true); offset += 4;
+                data.setFloat32(offset, params.wetMix, true); offset += 4;
                 
-                // Convert to string and then to array buffer
-                const jsonString = JSON.stringify(variantData);
-                const encoder = new TextEncoder();
-                return new Uint8Array(encoder.encode(jsonString));
+                // Write boolean flags
+                data.setUint8(offset++, params.textureMode);
+                data.setUint8(offset++, params.sizePressure);
+                data.setUint8(offset++, params.opacityPressure);
+                data.setUint8(offset++, params.densityPressure);
+                
+                // Add pressure curves
+                const sizeCurve = PressureCurveUtils.getCurveData('size');
+                const opacityCurve = PressureCurveUtils.getCurveData('opacity');
+                const densityCurve = PressureCurveUtils.getCurveData('density');
+                
+                // Write curve data lengths and data
+                data.setUint16(offset, sizeCurve.length, true); offset += 2;
+                for (let i = 0; i < sizeCurve.length; i++) {
+                    data.setUint8(offset++, sizeCurve[i]);
+                }
+                
+                data.setUint16(offset, opacityCurve.length, true); offset += 2;
+                for (let i = 0; i < opacityCurve.length; i++) {
+                    data.setUint8(offset++, opacityCurve[i]);
+                }
+                
+                data.setUint16(offset, densityCurve.length, true); offset += 2;
+                for (let i = 0; i < densityCurve.length; i++) {
+                    data.setUint8(offset++, densityCurve[i]);
+                }
+                
+                return new Uint8Array(data.buffer.slice(0, offset));
             }
         };
         
-        // Main converter with batch processing and cancellation
+        // Main converter
         const Converter = {
             async convertAll() {
-                if (AppState.converting) {
-                    Logger.warning('Conversion already in progress');
-                    return;
-                }
+                if (AppState.converting) return;
                 
                 AppState.converting = true;
                 AppState.abortController = new AbortController();
-                UI.disableConvertButton();
+                UI.elements.convertBtn.disabled = true;
                 UI.elements.cancelBtn.disabled = false;
                 UI.showProgress(0);
-                UI.elements.failedBrushesContainer.style.display = 'none';
                 
                 try {
-                    // Input validation
-                    const packageName = document.getElementById('packageName').value.trim() || 'Converted_Brushes';
-                    if (packageName.length > 100) {
-                        throw new Error('Package name is too long (maximum 100 characters)');
-                    }
+                    Logger.info('Starting conversion process...');
                     
-                    // Get UI settings
-                    const format = UI.elements.outputFormat.value;
-                    const authorName = document.getElementById('authorName').value || 'Artist';
-                    const compressionLevel = parseInt(document.getElementById('compressionLevel').value);
-                    
-                    // Parse brushes
-                    Logger.info('Parsing brush files...');
-                    UI.showStatus('Parsing brush files...', 'info');
+                    // Parse brushes from files
+                    UI.showStatus('Parsing brushes...', 'info');
                     const brushes = await BrushParser.parse(AppState.files);
+                    AppState.brushes = brushes;
                     
                     if (brushes.length === 0) {
-                        throw new Error('No brushes found in the loaded files. Please ensure you have valid brush images.');
+                        Logger.warning('No brushes found to convert');
+                        UI.showStatus('No brushes found to convert', 'warning');
+                        return;
                     }
                     
-                    // Get advanced settings
-                    const params = {
-                        brushSize: parseInt(document.getElementById('brushSize').value),
-                        opacity: parseInt(document.getElementById('opacity').value),
-                        spacing: parseInt(document.getElementById('spacing').value),
-                        hardness: parseInt(document.getElementById('hardness').value),
-                        angle: parseInt(document.getElementById('angle').value),
-                        density: parseInt(document.getElementById('density').value),
-                        wetMix: parseFloat(document.getElementById('wetMix').value),
-                        textureMode: document.getElementById('textureMode').checked,
-                        sizePressure: document.getElementById('sizePressure').checked,
-                        opacityPressure: document.getElementById('opacityPressure').checked,
-                        densityPressure: document.getElementById('densityPressure').checked
-                    };
+                    // Get conversion parameters
+                    const params = this.getParameters();
+                    const format = UI.elements.outputFormat.value;
                     
-                    // Create ZIP archive
-                    const zip = new JSZip();
-                    const zipFolder = zip.folder(UI.sanitizeName(packageName));
-                    
-                    // Convert each brush with batch processing
-                    AppState.stats.brushesConverted = 0;
-                    const failedBrushes = [];
-                    const batchSize = 5; // Process 5 brushes at a time
-                    
-                    for (let batchStart = 0; batchStart < brushes.length; batchStart += batchSize) {
-                        // Check if conversion was cancelled
-                        if (AppState.abortController.signal.aborted) {
-                            throw new DOMException('Conversion cancelled by user', 'AbortError');
-                        }
-                        
-                        const batchEnd = Math.min(batchStart + batchSize, brushes.length);
-                        const batchBrushes = brushes.slice(batchStart, batchEnd);
-                        
-                        for (let i = 0; i < batchBrushes.length; i++) {
-                            const brush = batchBrushes[i];
-                            const brushIndex = batchStart + i;
-                            const progress = Math.round(((brushIndex + 1) / brushes.length) * 100);
-                            UI.showProgress(progress);
-                            UI.showStatus(`Converting brush ${brushIndex + 1} of ${brushes.length}: ${brush.name}`, 'info');
-                            
-                            // Check if conversion was cancelled
-                            if (AppState.abortController.signal.aborted) {
-                                throw new DOMException('Conversion cancelled by user', 'AbortError');
-                            }
-                            
-                            try {
-                                if (format === 'sut') {
-                                    // Convert to SUT format
-                                    if (!AppState.templateLoaded) {
-                                        throw new Error('SUT template not loaded. Please load a template first.');
-                                    }
-                                    
-                                    const sutBlob = await SUTConverter.createSUT(brush, params);
-                                    zipFolder.file(`${UI.sanitizeName(brush.name)}.sut`, sutBlob);
-                                } else {
-                                    // Export as PNG only
-                                    const response = await fetch(brush.tipPNG, { signal: AppState.abortController.signal });
-                                    const blob = await response.blob();
-                                    zipFolder.file(`${UI.sanitizeName(brush.name)}.png`, blob);
-                                }
-                                
-                                AppState.stats.brushesConverted++;
-                                UI.updateStats();
-                                Logger.success(`Converted brush: ${brush.name}`);
-                                
-                            } catch (error) {
-                                if (error.name === 'AbortError') {
-                                    throw error; // Re-throw abort errors
-                                }
-                                Logger.error(`Failed to convert "${brush.name}": ${error.message}`);
-                                failedBrushes.push({ name: brush.name, error: error.message });
-                            }
-                        }
-                        
-                        // Cleanup memory between batches
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                        if (batchEnd < brushes.length) {
-                            UI.showStatus(`Processed ${batchEnd} of ${brushes.length} brushes...`, 'info');
-                        }
+                    if (format === 'sut') {
+                        await this.convertToSUT(brushes, params);
+                    } else if (format === 'png') {
+                        await this.convertToPNG(brushes);
                     }
                     
-                    // Show failed conversions if any
-                    UI.showFailedBrushes(failedBrushes);
-                    
-                    // Finalize ZIP
-                    UI.showStatus('Creating ZIP archive...', 'info');
-                    UI.showProgress(95);
-                    
-                    const content = await zip.generateAsync({
-                        type: 'blob',
-                        compression: 'DEFLATE',
-                        compressionOptions: { level: compressionLevel }
-                    });
-                    
-                    // Download
-                    const link = document.createElement('a');
-                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-                    link.href = URL.createObjectURL(content);
-                    link.download = `${UI.sanitizeName(packageName)}_${format}_${timestamp}.zip`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    
-                    // Cleanup
-                    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-                    
-                    // Success
-                    const successMsg = `Successfully converted ${AppState.stats.brushesConverted} of ${brushes.length} brushes`;
-                    Logger.success(successMsg);
-                    UI.showStatus(successMsg, 'success');
-                    UI.showProgress(100);
-                    
+                    Logger.success('Conversion completed successfully');
+                    UI.showStatus('Conversion completed successfully', 'success');
                 } catch (error) {
-                    if (error.name === 'AbortError') {
-                        Logger.info('Conversion cancelled by user');
-                        UI.showStatus('Conversion cancelled', 'info');
-                    } else {
-                        const errorMsg = `Conversion failed: ${error.message}`;
-                        Logger.error(errorMsg);
-                        UI.showStatus(errorMsg, 'error');
-                        console.error(error);
+                    if (error.name !== 'AbortError') {
+                        Logger.error('Conversion failed: ' + error.message);
+                        UI.showStatus('Conversion failed: ' + error.message, 'error');
                     }
                 } finally {
                     AppState.converting = false;
                     AppState.abortController = null;
-                    UI.showProgress(0);
-                    UI.elements.progressBar.classList.remove('show');
+                    UI.elements.convertBtn.disabled = false;
                     UI.elements.cancelBtn.disabled = true;
+                    UI.showProgress(100);
+                    setTimeout(() => {
+                        UI.elements.progressBar.classList.remove('show');
+                    }, 2000);
+                }
+            },
+            async convertToSUT(brushes, params) {
+                const zip = new JSZip();
+                const failedBrushes = [];
+                let converted = 0;
+                
+                UI.showStatus('Converting brushes to SUT format...', 'info');
+                
+                for (let i = 0; i < brushes.length; i++) {
+                    if (AppState.abortController?.signal.aborted) {
+                        throw new Error('Conversion cancelled');
+                    }
                     
-                    // Re-enable convert button if we have files and template
-                    if (AppState.filesLoaded && AppState.files.length > 0 && AppState.templateLoaded) {
-                        UI.enableConvertButton();
+                    const brush = brushes[i];
+                    try {
+                        Logger.info(`Converting brush ${i + 1}/${brushes.length}: ${brush.name}`);
+                        UI.showStatus(`Converting brush ${i + 1}/${brushes.length}: ${brush.name}`, 'info');
+                        
+                        const sutBlob = await SUTConverter.createSUT(brush, params);
+                        const fileName = `${UI.sanitizeName(brush.name)}.sut`;
+                        zip.file(fileName, sutBlob);
+                        
+                        converted++;
+                        AppState.stats.brushesConverted = converted;
+                        UI.updateStats();
+                        
+                        UI.showProgress((i + 1) / brushes.length * 100);
+                    } catch (error) {
+                        Logger.error(`Failed to convert ${brush.name}: ${error.message}`);
+                        failedBrushes.push({ name: brush.name, error: error.message });
                     }
                 }
+                
+                // Show failed brushes if any
+                UI.showFailedBrushes(failedBrushes);
+                
+                if (converted > 0) {
+                    // Generate and download ZIP
+                    const packageName = UI.sanitizeName(document.getElementById('packageName').value || 'Brushes');
+                    const zipBlob = await zip.generateAsync({
+                        type: 'blob',
+                        compression: 'DEFLATE',
+                        compressionOptions: { level: parseInt(document.getElementById('compressionLevel').value) }
+                    });
+                    
+                    const downloadUrl = URL.createObjectURL(zipBlob);
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = `${packageName}.zip`;
+                    link.click();
+                    
+                    URL.revokeObjectURL(downloadUrl);
+                    Logger.success(`Successfully converted ${converted} brushes to SUT format`);
+                }
+            },
+            async convertToPNG(brushes) {
+                const zip = new JSZip();
+                let converted = 0;
+                
+                UI.showStatus('Exporting brush tips as PNG...', 'info');
+                
+                for (let i = 0; i < brushes.length; i++) {
+                    if (AppState.abortController?.signal.aborted) {
+                        throw new Error('Conversion cancelled');
+                    }
+                    
+                    const brush = brushes[i];
+                    try {
+                        Logger.info(`Exporting PNG ${i + 1}/${brushes.length}: ${brush.name}`);
+                        UI.showStatus(`Exporting PNG ${i + 1}/${brushes.length}: ${brush.name}`, 'info');
+                        
+                        // Convert data URL to blob
+                        const response = await fetch(brush.tipPNG, { signal: AppState.abortController?.signal });
+                        const blob = await response.blob();
+                        
+                        const fileName = `${UI.sanitizeName(brush.name)}.png`;
+                        zip.file(fileName, blob);
+                        
+                        converted++;
+                        AppState.stats.brushesConverted = converted;
+                        UI.updateStats();
+                        
+                        UI.showProgress((i + 1) / brushes.length * 100);
+                    } catch (error) {
+                        Logger.error(`Failed to export ${brush.name}: ${error.message}`);
+                    }
+                }
+                
+                if (converted > 0) {
+                    // Generate and download ZIP
+                    const packageName = UI.sanitizeName(document.getElementById('packageName').value || 'Brushes');
+                    const zipBlob = await zip.generateAsync({
+                        type: 'blob',
+                        compression: 'DEFLATE',
+                        compressionOptions: { level: parseInt(document.getElementById('compressionLevel').value) }
+                    });
+                    
+                    const downloadUrl = URL.createObjectURL(zipBlob);
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = `${packageName}_tips.zip`;
+                    link.click();
+                    
+                    URL.revokeObjectURL(downloadUrl);
+                    Logger.success(`Successfully exported ${converted} PNG brush tips`);
+                }
+            },
+            getParameters() {
+                return {
+                    brushSize: parseInt(document.getElementById('brushSize').value),
+                    opacity: parseInt(document.getElementById('opacity').value),
+                    spacing: parseInt(document.getElementById('spacing').value),
+                    hardness: parseInt(document.getElementById('hardness').value),
+                    angle: parseInt(document.getElementById('angle').value),
+                    density: parseInt(document.getElementById('density').value),
+                    wetMix: parseInt(document.getElementById('wetMix').value),
+                    textureMode: document.getElementById('textureMode').checked,
+                    sizePressure: document.getElementById('sizePressure').checked,
+                    opacityPressure: document.getElementById('opacityPressure').checked,
+                    densityPressure: document.getElementById('densityPressure').checked
+                };
             }
         };
-        
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            BrushParser.cleanup();
-        });
-        
-        // Initial status
-        document.addEventListener('DOMContentLoaded', () => {
-            UI.showStatus('Ready - load files and a template to begin', 'success');
-            Logger.info('Application ready. Load brush files and a SUT template to get started.');
-        });
     </script>
 </body>
 </html>
