@@ -1,17 +1,17 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CSP Brush Converter Pro - Fully Working Version</title>
-    <meta name="description" content="Convert Procreate, Photoshop ABR, and custom brushes to Clip Studio Paint format">
+    <title>CSP .sut Brush Converter - Professional Edition</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
              background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px;color:#fff}
-        .container{max-width:1200px;margin:0 auto;background:rgba(255,255,255,.95);
+        .container{max-width:1400px;margin:0 auto;background:rgba(255,255,255,.95);
                    border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
         .header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:30px;text-align:center}
         .header h1{font-size:clamp(1.5em,4vw,2.5em);margin-bottom:10px;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,.2)}
@@ -23,16 +23,20 @@
         #dropZone:hover{border-color:#764ba2;transform:translateY(-2px);box-shadow:0 10px 30px rgba(102,126,234,.3)}
         #dropZone.dragover{border-color:#00d4ff;background:linear-gradient(135deg,#e0f7fa 0%,#b2ebf2 100%);transform:scale(1.02)}
         #dropZone svg{width:clamp(48px,8vw,64px);height:clamp(48px,8vw,64px);margin-bottom:20px;opacity:.7}
-        .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin-bottom:30px}
+        .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-bottom:30px}
         .control-group{background:#f8f9fa;padding:20px;border-radius:10px;border:1px solid #e9ecef}
-        .control-group label{display:block;font-weight:600;margin-bottom:10px;color:#495057}
-        select,input[type=text]{width:100%;padding:12px;border:2px solid #dee2e6;border-radius:8px;font-size:1em;transition:border-color .3s}
-        select:focus,input[type=text]:focus{outline:none;border-color:#667eea}
+        .control-group label{display:block;font-weight:600;margin-bottom:8px;color:#495057;font-size:0.9em}
+        input[type=text],input[type=number],select{width:100%;padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:1em;transition:border-color .3s}
+        input[type=text]:focus,input[type=number]:focus,select:focus{outline:none;border-color:#667eea}
+        input[type=range]{width:100%;margin:10px 0}
+        .range-value{display:inline-block;background:#667eea;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.85em;margin-left:10px}
         .btn{padding:15px 40px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
              color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:1.1em;font-weight:600;
              transition:all .3s;box-shadow:0 4px 15px rgba(102,126,234,.4);display:inline-flex;align-items:center;gap:10px;width:100%;justify-content:center}
         .btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 20px rgba(102,126,234,.6)}
         .btn:disabled{background:#adb5bd;cursor:not-allowed;box-shadow:none}
+        .btn-secondary{background:linear-gradient(135deg,#6c757d 0%,#495057 100%);box-shadow:0 4px 15px rgba(108,117,125,.4)}
+        .btn-secondary:hover:not(:disabled){box-shadow:0 6px 20px rgba(108,117,125,.6)}
         .status-bar{background:#e9ecef;padding:15px;border-radius:8px;margin-bottom:20px;display:none;align-items:center;gap:10px}
         .status-bar.show{display:flex}
         .status-bar.success{background:#d4edda;color:#155724}
@@ -58,29 +62,42 @@
         .preview-item{text-align:center}
         .preview-item img{width:100%;height:100px;object-fit:contain;border:1px solid #dee2e6;border-radius:5px;background:#fff}
         .preview-item p{font-size:.8em;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .pressure-curve-editor{margin-top:15px;padding:15px;background:#f8f9fa;border-radius:8px}
+        .curve-canvas{width:100%;height:150px;border:1px solid #dee2e6;border-radius:5px;background:#fff;cursor:crosshair;margin-top:10px}
+        .checkbox-group{display:flex;align-items:center;margin:10px 0}
+        .checkbox-group input[type=checkbox]{margin-right:10px;width:auto}
+        .tabs{display:flex;border-bottom:2px solid #dee2e6;margin-bottom:20px}
+        .tab{padding:10px 20px;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:#495057;font-weight:500}
+        .tab.active{border-bottom-color:#667eea;color:#667eea}
+        .tab-content{display:none}
+        .tab-content.active{display:block}
         .footer{text-align:center;padding:20px;margin-top:30px;color:rgba(255,255,255,.7);font-size:.9em}
+        .advanced-settings{background:#fff3cd;padding:15px;border-radius:8px;margin-top:20px}
+        .advanced-settings h4{margin-bottom:10px;color:#856404}
         @media(max-width:768px){.controls{grid-template-columns:1fr}.import-options{grid-template-columns:1fr}}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>CSP Brush Converter Pro</h1>
-            <p>Fully Working Version - Converts Real Images</p>
+            <h1>CSP .sut Brush Converter</h1>
+            <p>Professional Edition - Full CSP Database Schema Support</p>
         </div>
         <div class="content">
             <div id="dropZone">
                 <svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z"/></svg>
                 <h2 style="color:#667eea;margin-bottom:10px">Drop Files Here</h2>
-                <p style="color:#6c757d;margin-bottom:20px">Supports: PNG, ABR, ZIP files containing brushes</p>
+                <p style="color:#6c757d;margin-bottom:20px">Supports: PNG, ABR, ZIP, .brushset files</p>
                 
                 <div class="import-options">
                     <button class="btn" id="importFilesBtn">Import Files</button>
-                    <button class="btn" id="importZipBtn">Import ZIP</button>
+                    <button class="btn" id="importZipBtn">Import ZIP/Brushset</button>
+                    <button class="btn btn-secondary" id="loadTemplateBtn">Load SUT Template</button>
                 </div>
                 
-                <input type="file" id="fileInput" multiple accept=".png,.abr,.zip" style="display:none">
-                <input type="file" id="zipInput" accept=".zip" style="display:none">
+                <input type="file" id="fileInput" multiple accept=".png,.abr,.zip,.brushset" style="display:none">
+                <input type="file" id="zipInput" accept=".zip,.brushset" style="display:none">
+                <input type="file" id="templateInput" accept=".sut" style="display:none">
             </div>
 
             <div class="stats" id="stats" style="display:none">
@@ -94,26 +111,111 @@
                 <div id="previewGrid" class="preview-grid"></div>
             </div>
 
-            <div class="controls">
-                <div class="control-group">
-                    <label for="targetFormat">Output Format</label>
-                    <select id="targetFormat">
-                        <option value="sut">Clip Studio Paint (.sut)</option>
-                        <option value="png">Brush Tip PNGs Only</option>
-                    </select>
-                    <div class="format-info" id="formatInfo"></div>
+            <!-- Tabs for different settings -->
+            <div class="tabs">
+                <button class="tab active" data-tab="basic">Basic Settings</button>
+                <button class="tab" data-tab="advanced">Advanced</button>
+                <button class="tab" data-tab="pressure">Pressure Curves</button>
+            </div>
+
+            <!-- Basic Settings Tab -->
+            <div id="basic" class="tab-content active">
+                <div class="controls">
+                    <div class="control-group">
+                        <label for="packageName">Package Name</label>
+                        <input type="text" id="packageName" placeholder="My Custom Brushes" value="Converted Brushes">
+                    </div>
+                    <div class="control-group">
+                        <label for="authorName">Author Name</label>
+                        <input type="text" id="authorName" placeholder="Artist Name">
+                    </div>
+                    <div class="control-group">
+                        <label for="compressionLevel">Compression</label>
+                        <select id="compressionLevel">
+                            <option value="1">Fast</option>
+                            <option value="6" selected>Balanced</option>
+                            <option value="9">Maximum</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="outputFormat">Output Format</label>
+                        <select id="outputFormat">
+                            <option value="sut">Clip Studio Paint (.sut)</option>
+                            <option value="png">Brush Tip PNGs Only</option>
+                        </select>
+                        <div class="format-info" id="formatInfo"></div>
+                    </div>
                 </div>
-                <div class="control-group">
-                    <label for="packageName">Package Name</label>
-                    <input type="text" id="packageName" placeholder="My Custom Brushes" value="Converted Brushes">
+            </div>
+
+            <!-- Advanced Settings Tab -->
+            <div id="advanced" class="tab-content">
+                <div class="controls">
+                    <div class="control-group">
+                        <label for="brushSize">Brush Size <span class="range-value" id="brushSizeValue">50</span></label>
+                        <input type="range" id="brushSize" min="1" max="100" value="50">
+                    </div>
+                    <div class="control-group">
+                        <label for="opacity">Opacity <span class="range-value" id="opacityValue">80</span></label>
+                        <input type="range" id="opacity" min="1" max="100" value="80">
+                    </div>
+                    <div class="control-group">
+                        <label for="spacing">Spacing <span class="range-value" id="spacingValue">10</span></label>
+                        <input type="range" id="spacing" min="1" max="100" value="10">
+                    </div>
+                    <div class="control-group">
+                        <label for="hardness">Hardness <span class="range-value" id="hardnessValue">50</span></label>
+                        <input type="range" id="hardness" min="1" max="100" value="50">
+                    </div>
+                    <div class="control-group">
+                        <label for="angle">Angle <span class="range-value" id="angleValue">0</span>°</label>
+                        <input type="range" id="angle" min="0" max="360" value="0">
+                    </div>
+                    <div class="control-group">
+                        <label for="density">Density <span class="range-value" id="densityValue">100</span></label>
+                        <input type="range" id="density" min="1" max="100" value="100">
+                    </div>
+                    <div class="control-group">
+                        <label for="wetMix">Wet Mix <span class="range-value" id="wetMixValue">0.0</span></label>
+                        <input type="range" id="wetMix" min="0" max="100" value="0" step="1">
+                    </div>
+                    <div class="control-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="textureMode">
+                            <label for="textureMode">Texture Mode</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="sizePressure" checked>
+                            <label for="sizePressure">Size Pressure</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="opacityPressure" checked>
+                            <label for="opacityPressure">Opacity Pressure</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="densityPressure">
+                            <label for="densityPressure">Density Pressure</label>
+                        </div>
+                    </div>
                 </div>
-                <div class="control-group">
-                    <label for="compressionLevel">Compression</label>
-                    <select id="compressionLevel">
-                        <option value="1">Fast</option>
-                        <option value="6" selected>Balanced</option>
-                        <option value="9">Maximum</option>
-                    </select>
+            </div>
+
+            <!-- Pressure Curves Tab -->
+            <div id="pressure" class="tab-content">
+                <div class="pressure-curve-editor">
+                    <h4>Size Pressure Curve</h4>
+                    <canvas id="sizeCurveCanvas" class="curve-canvas" width="400" height="150"></canvas>
+                    <button class="btn btn-secondary" id="resetSizeCurve" style="margin-top:10px;width:auto">Reset Curve</button>
+                </div>
+                <div class="pressure-curve-editor">
+                    <h4>Opacity Pressure Curve</h4>
+                    <canvas id="opacityCurveCanvas" class="curve-canvas" width="400" height="150"></canvas>
+                    <button class="btn btn-secondary" id="resetOpacityCurve" style="margin-top:10px;width:auto">Reset Curve</button>
+                </div>
+                <div class="pressure-curve-editor">
+                    <h4>Density Pressure Curve</h4>
+                    <canvas id="densityCurveCanvas" class="curve-canvas" width="400" height="150"></canvas>
+                    <button class="btn btn-secondary" id="resetDensityCurve" style="margin-top:10px;width:auto">Reset Curve</button>
                 </div>
             </div>
 
@@ -123,13 +225,14 @@
             <div id="log"></div>
         </div>
         <div class="footer">
-            <p>CSP Brush Converter Pro - Fully Working Version | All processing happens in your browser</p>
+            <p>CSP .sut Brush Converter - Professional Edition | Full CSP Database Schema Support</p>
         </div>
     </div>
 
     <script>
         // Global variables
         let SQL, SQL_READY = false;
+        let SUT_TEMPLATE = null;
         
         // Application state
         const AppState = {
@@ -137,6 +240,7 @@
             brushes: [],
             filesLoaded: false,
             converting: false,
+            templateLoaded: false,
             stats: {
                 filesLoaded: 0,
                 brushesParsed: 0,
@@ -150,8 +254,10 @@
                 dropZone: document.getElementById('dropZone'),
                 fileInput: document.getElementById('fileInput'),
                 zipInput: document.getElementById('zipInput'),
+                templateInput: document.getElementById('templateInput'),
                 importFilesBtn: document.getElementById('importFilesBtn'),
                 importZipBtn: document.getElementById('importZipBtn'),
+                loadTemplateBtn: document.getElementById('loadTemplateBtn'),
                 convertBtn: document.getElementById('convertBtn'),
                 log: document.getElementById('log'),
                 statusBar: document.getElementById('statusBar'),
@@ -162,25 +268,56 @@
                 fileCount: document.getElementById('fileCount'),
                 brushCount: document.getElementById('brushCount'),
                 convertedCount: document.getElementById('convertedCount'),
-                targetFormat: document.getElementById('targetFormat'),
+                outputFormat: document.getElementById('outputFormat'),
                 formatInfo: document.getElementById('formatInfo'),
                 previewContainer: document.getElementById('previewContainer'),
                 previewGrid: document.getElementById('previewGrid')
             },
             
             init() {
+                // Tab switching
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                        tab.classList.add('active');
+                        document.getElementById(tab.dataset.tab).classList.add('active');
+                    });
+                });
+
+                // Range value updates
+                const ranges = [
+                    { id: 'brushSize', valueId: 'brushSizeValue', suffix: '' },
+                    { id: 'opacity', valueId: 'opacityValue', suffix: '' },
+                    { id: 'spacing', valueId: 'spacingValue', suffix: '' },
+                    { id: 'hardness', valueId: 'hardnessValue', suffix: '' },
+                    { id: 'angle', valueId: 'angleValue', suffix: '°' },
+                    { id: 'density', valueId: 'densityValue', suffix: '' },
+                    { id: 'wetMix', valueId: 'wetMixValue', suffix: '', scale: 0.01 }
+                ];
+                
+                ranges.forEach(range => {
+                    const input = document.getElementById(range.id);
+                    const value = document.getElementById(range.valueId);
+                    input.addEventListener('input', () => {
+                        const val = range.scale ? (input.value * range.scale).toFixed(1) : input.value;
+                        value.textContent = val + range.suffix;
+                    });
+                });
+
                 // Format info update
-                this.elements.targetFormat.addEventListener('change', () => {
+                this.elements.outputFormat.addEventListener('change', () => {
                     const info = {
-                        'sut': 'Full CSP brush files with metadata',
+                        'sut': 'Full CSP brush files with metadata and pressure curves',
                         'png': 'Brush tip images only'
                     };
-                    this.elements.formatInfo.textContent = info[this.elements.targetFormat.value] || '';
+                    this.elements.formatInfo.textContent = info[this.elements.outputFormat.value] || '';
                 });
                 
                 // Set up event listeners
                 this.elements.importFilesBtn.addEventListener('click', () => this.elements.fileInput.click());
                 this.elements.importZipBtn.addEventListener('click', () => this.elements.zipInput.click());
+                this.elements.loadTemplateBtn.addEventListener('click', () => this.elements.templateInput.click());
                 
                 this.elements.fileInput.addEventListener('change', (e) => {
                     if (e.target.files.length > 0) FileManager.handleFiles(Array.from(e.target.files));
@@ -188,6 +325,10 @@
                 
                 this.elements.zipInput.addEventListener('change', (e) => {
                     if (e.target.files.length > 0) FileManager.handleFiles(Array.from(e.target.files));
+                });
+                
+                this.elements.templateInput.addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) TemplateManager.loadTemplate(e.target.files[0]);
                 });
                 
                 // Drag and drop
@@ -212,7 +353,7 @@
                 this.elements.convertBtn.addEventListener('click', Converter.convertAll);
                 
                 // Initialize format info
-                this.elements.targetFormat.dispatchEvent(new Event('change'));
+                this.elements.outputFormat.dispatchEvent(new Event('change'));
             },
             
             showStatus(message, type = 'info') {
@@ -301,6 +442,272 @@
             }
         };
 
+        // UUID utilities
+        const UUIDUtils = {
+            generateUuid() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    const r = Math.random() * 16 | 0;
+                    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            },
+            
+            uuidToBlob(uuidStr) {
+                const cleanUuid = uuidStr.replace(/-/g, '');
+                const bytes = new Uint8Array(16);
+                for (let i = 0; i < 16; i++) {
+                    bytes[i] = parseInt(cleanUuid.substr(i * 2, 2), 16);
+                }
+                return bytes;
+            },
+            
+            generateUuidBlob() {
+                return this.uuidToBlob(this.generateUuid());
+            }
+        };
+
+        // Pressure curve utilities
+        const PressureCurveUtils = {
+            createPressureCurve(points) {
+                // Validate and clamp points
+                const validatedPoints = [];
+                for (const [x, y] of points) {
+                    const xClamped = Math.max(0.0, Math.min(1.0, x));
+                    const yClamped = Math.max(0.0, Math.min(1.0, y));
+                    validatedPoints.push([xClamped, yClamped]);
+                }
+                
+                // Sort by x
+                validatedPoints.sort((a, b) => a[0] - b[0]);
+                
+                // CSP requires at least 2 points
+                if (validatedPoints.length < 2) {
+                    validatedPoints.push([0.0, 0.0], [1.0, 1.0]);
+                }
+                
+                // Create binary data (big-endian)
+                const data = new DataView(new ArrayBuffer(2 + validatedPoints.length * 4));
+                data.setUint16(0, validatedPoints.length, false); // count
+                
+                let offset = 2;
+                for (const [x, y] of validatedPoints) {
+                    data.setUint16(offset, Math.round(x * 65535), false); // x
+                    data.setUint16(offset + 2, Math.round(y * 65535), false); // y
+                    offset += 4;
+                }
+                
+                return new Uint8Array(data.buffer);
+            },
+            
+            initCurveEditors() {
+                const curves = {
+                    size: { canvas: document.getElementById('sizeCurveCanvas'), points: [[0,0], [0.3,0.2], [0.7,0.8], [1,1]] },
+                    opacity: { canvas: document.getElementById('opacityCurveCanvas'), points: [[0,0], [0.5,0.3], [1,1]] },
+                    density: { canvas: document.getElementById('densityCurveCanvas'), points: [[0,0], [1,1]] }
+                };
+                
+                Object.keys(curves).forEach(type => {
+                    const curve = curves[type];
+                    this.setupCurveEditor(curve.canvas, curve.points, type);
+                    
+                    // Reset button
+                    document.getElementById(`reset${type.charAt(0).toUpperCase() + type.slice(1)}Curve`)
+                        .addEventListener('click', () => {
+                            curve.points = type === 'size' ? [[0,0], [0.3,0.2], [0.7,0.8], [1,1]] :
+                                           type === 'opacity' ? [[0,0], [0.5,0.3], [1,1]] :
+                                           [[0,0], [1,1]];
+                            this.drawCurve(curve.canvas, curve.points);
+                        });
+                });
+                
+                this.curveData = curves;
+            },
+            
+            setupCurveEditor(canvas, points, type) {
+                const ctx = canvas.getContext('2d');
+                let isDragging = false;
+                let dragIndex = -1;
+                
+                const draw = () => this.drawCurve(canvas, points);
+                
+                const getMousePos = (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    return {
+                        x: (e.clientX - rect.left) / rect.width,
+                        y: 1 - (e.clientY - rect.top) / rect.height
+                    };
+                };
+                
+                const getPointIndex = (pos) => {
+                    for (let i = 0; i < points.length; i++) {
+                        const dx = pos.x - points[i][0];
+                        const dy = pos.y - points[i][1];
+                        if (Math.sqrt(dx*dx + dy*dy) < 0.05) {
+                            return i;
+                        }
+                    }
+                    return -1;
+                };
+                
+                canvas.addEventListener('mousedown', (e) => {
+                    const pos = getMousePos(e);
+                    dragIndex = getPointIndex(pos);
+                    if (dragIndex !== -1) {
+                        isDragging = true;
+                        canvas.style.cursor = 'grabbing';
+                    }
+                });
+                
+                canvas.addEventListener('mousemove', (e) => {
+                    const pos = getMousePos(e);
+                    
+                    if (isDragging && dragIndex !== -1) {
+                        if (dragIndex === 0) {
+                            points[dragIndex] = [0, Math.max(0, Math.min(1, pos.y))];
+                        } else if (dragIndex === points.length - 1) {
+                            points[dragIndex] = [1, Math.max(0, Math.min(1, pos.y))];
+                        } else {
+                            points[dragIndex] = [
+                                Math.max(points[dragIndex-1][0] + 0.01, Math.min(points[dragIndex+1][0] - 0.01, pos.x)),
+                                Math.max(0, Math.min(1, pos.y))
+                            ];
+                        }
+                        draw();
+                    } else {
+                        canvas.style.cursor = getPointIndex(pos) !== -1 ? 'grab' : 'crosshair';
+                    }
+                });
+                
+                canvas.addEventListener('mouseup', () => {
+                    isDragging = false;
+                    dragIndex = -1;
+                    canvas.style.cursor = 'crosshair';
+                });
+                
+                canvas.addEventListener('mouseleave', () => {
+                    isDragging = false;
+                    dragIndex = -1;
+                    canvas.style.cursor = 'crosshair';
+                });
+                
+                draw();
+            },
+            
+            drawCurve(canvas, points) {
+                const ctx = canvas.getContext('2d');
+                const width = canvas.width;
+                const height = canvas.height;
+                
+                // Clear canvas
+                ctx.clearRect(0, 0, width, height);
+                
+                // Draw grid
+                ctx.strokeStyle = '#e0e0e0';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 10; i++) {
+                    const x = (width / 10) * i;
+                    const y = (height / 10) * i;
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(width, y);
+                    ctx.stroke();
+                }
+                
+                // Draw curve
+                ctx.strokeStyle = '#667eea';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                points.forEach((point, i) => {
+                    const x = point[0] * width;
+                    const y = (1 - point[1]) * height;
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.stroke();
+                
+                // Draw points
+                points.forEach(point => {
+                    const x = point[0] * width;
+                    const y = (1 - point[1]) * height;
+                    
+                    ctx.fillStyle = '#667eea';
+                    ctx.beginPath();
+                    ctx.arc(x, y, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            },
+            
+            getCurveData(type) {
+                if (this.curveData && this.curveData[type]) {
+                    return this.createPressureCurve(this.curveData[type].points);
+                }
+                return null;
+            }
+        };
+
+        // Template manager
+        const TemplateManager = {
+            async loadTemplate(file) {
+                try {
+                    Logger.info(`Loading SUT template: ${file.name}`);
+                    const arrayBuffer = await file.arrayBuffer();
+                    const db = new SQL.Database(new Uint8Array(arrayBuffer));
+                    
+                    // Validate template
+                    if (!this.validateTemplate(db)) {
+                        Logger.error('Invalid SUT template - missing required tables');
+                        db.close();
+                        return;
+                    }
+                    
+                    SUT_TEMPLATE = new Uint8Array(arrayBuffer);
+                    AppState.templateLoaded = true;
+                    
+                    Logger.success('SUT template loaded successfully');
+                    UI.showStatus('Template loaded - ready for conversion', 'success');
+                    
+                    if (AppState.filesLoaded) {
+                        UI.enableConvertButton();
+                    }
+                    
+                    db.close();
+                } catch (error) {
+                    Logger.error(`Failed to load template: ${error.message}`);
+                }
+            },
+            
+            validateTemplate(db) {
+                const requiredTables = ['Manager', 'MaterialFile', 'Node'];
+                const cursor = db.prepare("SELECT name FROM sqlite_master WHERE type='table'");
+                
+                const tables = [];
+                while (cursor.step()) {
+                    tables.push(cursor.get()[0]);
+                }
+                cursor.free();
+                
+                const missing = requiredTables.filter(t => !tables.includes(t));
+                if (missing.length > 0) {
+                    Logger.warning(`Template missing tables: ${missing.join(', ')}`);
+                    return false;
+                }
+                
+                return true;
+            }
+        };
+
         // File management
         const FileManager = {
             async handleFiles(files) {
@@ -314,7 +721,7 @@
                         if (file.size === 0) continue;
                         
                         const ext = file.name.toLowerCase().split('.').pop();
-                        if (ext === 'zip') {
+                        if (['zip', 'brushset'].includes(ext)) {
                             await this.extractZip(file);
                         } else {
                             await this.addFile(file);
@@ -326,9 +733,11 @@
                     UI.updateStats();
                     Logger.success(`Loaded ${AppState.files.length} files`);
                     
-                    if (AppState.files.length > 0) {
+                    if (AppState.files.length > 0 && AppState.templateLoaded) {
                         UI.enableConvertButton();
                         UI.showStatus('Ready to convert', 'success');
+                    } else if (AppState.files.length > 0) {
+                        UI.showStatus('Load a SUT template to begin conversion', 'info');
                     } else {
                         UI.showStatus('No valid files loaded', 'error');
                     }
@@ -356,7 +765,7 @@
                     const promises = [];
                     
                     zip.forEach((path, entry) => {
-                        if (!entry.dir) {
+                        if (!entry.dir && path.toLowerCase().endsWith('.png')) {
                             promises.push(
                                 entry.async('uint8array').then(content => {
                                     AppState.files.push({
@@ -369,14 +778,14 @@
                     });
                     
                     await Promise.all(promises);
-                    Logger.success(`Extracted ${promises.length} files from ZIP`);
+                    Logger.success(`Extracted ${promises.length} PNG files from ZIP`);
                 } catch (error) {
                     Logger.error('ZIP extraction failed: ' + error.message);
                 }
             }
         };
 
-        // Image processor - ACTUAL IMAGE PROCESSING
+        // Image processor
         const ImageProcessor = {
             async processImage(imageData) {
                 return new Promise((resolve, reject) => {
@@ -470,7 +879,7 @@
             }
         };
 
-        // Brush parser - WITH REAL IMAGE PROCESSING
+        // Brush parser
         const BrushParser = {
             async parse(files) {
                 Logger.info('Parsing files for brushes...');
@@ -502,27 +911,17 @@
             
             async createBrushFromPNG(file, usedNames) {
                 try {
-                    // Process the actual PNG image
                     const processedImage = await ImageProcessor.processImage(file.content);
                     const name = this.getUniqueName(file.name.replace('.png', ''), usedNames);
                     
                     return {
                         name: name,
-                        brushSize: 50,
-                        opacity: 80,
-                        spacing: 25,
-                        hardness: 50,
                         tipPNG: processedImage
                     };
                 } catch (error) {
                     Logger.warning(`Failed to process PNG ${file.name}: ${error.message}`);
-                    // Fallback to placeholder
                     return {
                         name: this.getUniqueName(file.name.replace('.png', ''), usedNames),
-                        brushSize: 50,
-                        opacity: 80,
-                        spacing: 25,
-                        hardness: 50,
                         tipPNG: ImageProcessor.createPlaceholder()
                     };
                 }
@@ -530,7 +929,6 @@
             
             async createBrushFromABR(file, usedNames) {
                 try {
-                    // Try to extract PNG from ABR
                     const data = file.content;
                     let pngStart = -1;
                     
@@ -559,20 +957,13 @@
                         
                         return {
                             name: name,
-                            brushSize: 50,
-                            opacity: 80,
-                            spacing: 25,
-                            hardness: 50,
                             tipPNG: processedImage
                         };
-                    } else {
-                        Logger.warning(`No PNG data found in ABR file: ${file.name}`);
-                        return null;
                     }
                 } catch (error) {
                     Logger.warning(`Failed to process ABR ${file.name}: ${error.message}`);
-                    return null;
                 }
+                return null;
             },
             
             getUniqueName(baseName, usedNames) {
@@ -590,65 +981,30 @@
             }
         };
 
-        // SUT Converter - WORKING DATABASE STRUCTURE
+        // SUT Converter - Professional Edition with full CSP schema support
         const SUTConverter = {
-            async createSUT(brush) {
-                if (!SQL_READY) {
-                    throw new Error('SQL engine not ready');
+            async createSUT(brush, params) {
+                if (!SQL_READY || !SUT_TEMPLATE) {
+                    throw new Error('SQL engine or template not ready');
                 }
                 
-                const db = new SQL.Database();
+                const db = new SQL.Database(SUT_TEMPLATE);
                 
                 try {
-                    // Create proper CSP database structure
-                    db.run(`
-                        CREATE TABLE ToolCommon (
-                            _PW_ID INTEGER PRIMARY KEY,
-                            ToolType INTEGER DEFAULT 2,
-                            Version INTEGER DEFAULT 1,
-                            Name TEXT,
-                            ToolUuid BLOB
-                        )
-                    `);
+                    // Get primary node info
+                    const nodeInfo = this.getPrimaryNode(db);
+                    if (!nodeInfo) {
+                        throw new Error('Could not find primary node in template');
+                    }
                     
-                    db.run(`
-                        CREATE TABLE BrushTip (
-                            _PW_ID INTEGER PRIMARY KEY,
-                            BrushTipUuid BLOB,
-                            ImageData BLOB,
-                            Width INTEGER DEFAULT 512,
-                            Height INTEGER DEFAULT 512
-                        )
-                    `);
+                    // Update brush name
+                    db.run("UPDATE Node SET NodeName = ? WHERE _PW_ID = ?", [brush.name, nodeInfo.node_id]);
                     
-                    db.run(`
-                        CREATE TABLE BrushSetting (
-                            _PW_ID INTEGER PRIMARY KEY,
-                            BrushUuid BLOB,
-                            Size REAL DEFAULT 50,
-                            Opacity REAL DEFAULT 80,
-                            Spacing REAL DEFAULT 25,
-                            Hardness REAL DEFAULT 50
-                        )
-                    `);
-                    
-                    // Generate UUIDs
-                    const toolUuid = this.generateUuidBlob();
-                    const tipUuid = this.generateUuidBlob();
-                    const brushUuid = this.generateUuid();
-                    
-                    // Insert tool data
-                    db.run(
-                        "INSERT INTO ToolCommon (_PW_ID, ToolType, Version, Name, ToolUuid) VALUES (1, 2, 1, ?, ?)",
-                        [brush.name, toolUuid]
-                    );
-                    
-                    // Get brush tip image data
+                    // Get and update image data
                     let imageData;
                     try {
                         const response = await fetch(brush.tipPNG);
-                        const arrayBuffer = await response.arrayBuffer();
-                        imageData = new Uint8Array(arrayBuffer);
+                        imageData = new Uint8Array(await response.arrayBuffer());
                     } catch (error) {
                         Logger.warning(`Failed to fetch image for ${brush.name}, using placeholder`);
                         const canvas = document.createElement('canvas');
@@ -661,19 +1017,21 @@
                         imageData = new Uint8Array(await blob.arrayBuffer());
                     }
                     
-                    // Insert brush tip
-                    db.run(
-                        "INSERT INTO BrushTip (_PW_ID, BrushTipUuid, ImageData, Width, Height) VALUES (1, ?, ?, ?, ?)",
-                        [tipUuid, imageData, 512, 512]
-                    );
+                    // Update MaterialFile
+                    db.run("UPDATE MaterialFile SET FileData = ? WHERE _PW_ID = ?", [imageData, nodeInfo.material_id]);
                     
-                    // Insert brush settings
-                    db.run(
-                        "INSERT INTO BrushSetting (_PW_ID, BrushUuid, Size, Opacity, Spacing, Hardness) VALUES (1, ?, ?, ?, ?, ?)",
-                        [brushUuid, brush.brushSize, brush.opacity, brush.spacing, brush.hardness]
-                    );
+                    // Update brush parameters if Variant table exists
+                    if (this.hasVariantTable(db)) {
+                        this.updateBrushParameters(db, nodeInfo, params);
+                    }
                     
-                    // Export and return
+                    // Update Manager metadata
+                    if (this.hasManagerTable(db)) {
+                        db.run("UPDATE Manager SET CurrentNodeUuid = ?, SavedCount = SavedCount + 1 WHERE _PW_ID = 1", 
+                               [UUIDUtils.generateUuidBlob()]);
+                    }
+                    
+                    // Export database
                     const dbBuffer = db.export();
                     return new Blob([dbBuffer], { type: 'application/octet-stream' });
                     
@@ -684,150 +1042,88 @@
                 }
             },
             
-            generateUuid() {
-                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                    const r = Math.random() * 16 | 0;
-                    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-                    return v.toString(16);
-                });
+            getPrimaryNode(db) {
+                // Find node with material link
+                const cursor = db.prepare(`
+                    SELECT n._PW_ID, n.NodeMaterialUuid, m._PW_ID, m.MaterialUuid 
+                    FROM Node n 
+                    LEFT JOIN MaterialFile m ON n.NodeMaterialUuid = m.MaterialUuid 
+                    WHERE n.NodeName IS NOT NULL AND n.NodeName != '' 
+                    ORDER BY n._PW_ID ASC 
+                    LIMIT 1
+                `);
+                
+                const result = cursor.step() ? cursor.get() : null;
+                cursor.free();
+                
+                if (result) {
+                    return {
+                        node_id: result[0],
+                        node_uuid: result[1],
+                        material_id: result[2],
+                        material_uuid: result[3]
+                    };
+                }
+                
+                // Fallback: find first node and material
+                const nodeCursor = db.prepare("SELECT _PW_ID, NodeMaterialUuid FROM Node ORDER BY _PW_ID ASC LIMIT 1");
+                const nodeResult = nodeCursor.step() ? nodeCursor.get() : null;
+                nodeCursor.free();
+                
+                const matCursor = db.prepare("SELECT _PW_ID, MaterialUuid FROM MaterialFile ORDER BY _PW_ID ASC LIMIT 1");
+                const matResult = matCursor.step() ? matCursor.get() : null;
+                matCursor.free();
+                
+                if (nodeResult && matResult) {
+                    return {
+                        node_id: nodeResult[0],
+                        node_uuid: nodeResult[1] || UUIDUtils.generateUuid(),
+                        material_id: matResult[0],
+                        material_uuid: matResult[1] || UUIDUtils.generateUuid()
+                    };
+                }
+                
+                return null;
             },
             
-            generateUuidBlob() {
-                const uuid = this.generateUuid().replace(/-/g, '');
-                const bytes = new Uint8Array(16);
-                for (let i = 0; i < 16; i++) {
-                    bytes[i] = parseInt(uuid.substr(i * 2, 2), 16);
-                }
-                return bytes;
-            }
-        };
-
-        // Main converter
-        const Converter = {
-            async convertAll() {
-                if (AppState.converting) return;
-                
-                AppState.converting = true;
-                UI.disableConvertButton();
-                Logger.clear();
-                
-                try {
-                    UI.showStatus('Parsing brushes...', 'info');
-                    const brushes = await BrushParser.parse(AppState.files);
-                    
-                    if (brushes.length === 0) {
-                        throw new Error('No valid brushes found. Please upload PNG or ABR files.');
-                    }
-                    
-                    const format = UI.elements.targetFormat.value;
-                    const packageName = UI.sanitizeName(
-                        document.getElementById('packageName').value || 'Converted_Brushes'
-                    );
-                    
-                    UI.showStatus(`Converting ${brushes.length} brushes...`, 'info');
-                    UI.showProgress(0);
-                    
-                    const zip = new JSZip();
-                    const compressionLevel = parseInt(document.getElementById('compressionLevel').value);
-                    
-                    for (let i = 0; i < brushes.length; i++) {
-                        const brush = brushes[i];
-                        const progress = ((i + 1) / brushes.length) * 100;
-                        UI.showProgress(progress);
-                        
-                        try {
-                            if (format === 'sut') {
-                                const sutBlob = await SUTConverter.createSUT(brush);
-                                zip.file(`${brush.name}.sut`, sutBlob);
-                            } else {
-                                const response = await fetch(brush.tipPNG);
-                                const pngBlob = await response.blob();
-                                zip.file(`${brush.name}.png`, pngBlob);
-                            }
-                            
-                            AppState.stats.brushesConverted++;
-                            UI.updateStats();
-                        } catch (error) {
-                            Logger.error(`Failed to convert ${brush.name}: ${error.message}`);
-                        }
-                        
-                        // Yield to UI
-                        if (i % 5 === 0) await new Promise(r => setTimeout(r, 10));
-                    }
-                    
-                    if (AppState.stats.brushesConverted === 0) {
-                        throw new Error('No brushes were successfully converted');
-                    }
-                    
-                    UI.showProgress(95);
-                    const resultBlob = await zip.generateAsync({
-                        type: 'blob',
-                        compression: 'DEFLATE',
-                        compressionOptions: { level: compressionLevel }
-                    });
-                    
-                    // Download
-                    const link = document.createElement('a');
-                    link.href = URL.createObjectURL(resultBlob);
-                    link.download = `${packageName}_${format}_${Date.now()}.zip`;
-                    link.click();
-                    
-                    // Clean up
-                    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-                    
-                    UI.showProgress(100);
-                    const fileSizeMB = (resultBlob.size / (1024 * 1024)).toFixed(2);
-                    UI.showStatus(`Conversion complete! Downloaded ${fileSizeMB} MB`, 'success');
-                    Logger.success(`Successfully converted ${AppState.stats.brushesConverted} brushes`);
-                    
-                } catch (error) {
-                    Logger.error('Conversion failed: ' + error.message);
-                    UI.showStatus('Conversion failed', 'error');
-                } finally {
-                    AppState.converting = false;
-                    if (AppState.filesLoaded) {
-                        UI.enableConvertButton();
-                    }
-                }
-            }
-        };
-
-        // Initialize the application
-        window.addEventListener('load', async () => {
-            UI.init();
-            Logger.info('CSP Brush Converter Pro - Initializing...');
-            UI.showStatus('Initializing...', 'info');
+            hasVariantTable(db) {
+                const cursor = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='Variant'");
+                const exists = cursor.step();
+                cursor.free();
+                return exists;
+            },
             
-            // Initialize SQL.js
-            try {
-                SQL = await initSqlJs({
-                    locateFile: (file) => {
-                        if (file === 'sql-wasm.wasm') {
-                            return 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.wasm';
-                        }
-                        return `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`;
-                    }
-                });
-                SQL_READY = true;
-                Logger.success('SQL.js engine ready');
-            } catch (error) {
-                Logger.error('SQL.js failed to load: ' + error.message);
-                UI.showStatus('PNG export only available', 'warning');
-                
-                // Disable SUT option
-                const sutOption = UI.elements.targetFormat.querySelector('option[value="sut"]');
-                if (sutOption) {
-                    sutOption.disabled = true;
-                    if (UI.elements.targetFormat.value === 'sut') {
-                        UI.elements.targetFormat.value = 'png';
-                    }
-                }
-            }
+            hasManagerTable(db) {
+                const cursor = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='Manager'");
+                const exists = cursor.step();
+                cursor.free();
+                return exists;
+            },
             
-            Logger.info('CSP Brush Converter Pro - Ready!');
-            UI.showStatus('Ready - upload brush files to begin', 'success');
-        });
-    </script>
-</body>
-</html>
-
+            updateBrushParameters(db, nodeInfo, params) {
+                // Get or create VariantID
+                let variantId = null;
+                const cursor = db.prepare("SELECT NodeVariantID FROM Node WHERE _PW_ID = ?");
+                cursor.bind([nodeInfo.node_id]);
+                if (cursor.step()) {
+                    variantId = cursor.get()[0];
+                }
+                cursor.free();
+                
+                if (!variantId) {
+                    variantId = UUIDUtils.generateUuid().replace('-', '');
+                    db.run("UPDATE Node SET NodeVariantID = ? WHERE _PW_ID = ?", [variantId, nodeInfo.node_id]);
+                }
+                
+                // Create variant data
+                const variantData = {
+                    brushSize: params.brushSize || 50,
+                    opacity: params.opacity || 80,
+                    spacing: params.spacing || 10,
+                    hardness: params.hardness || 50,
+                    angle: params.angle || 0,
+                    density: params.density || 100,
+                    wetMix: params.wetMix || 0,
+                    textureMode: params.textureMode || false,
+                    sizePressure: params.sizePressure !== false,
+                    opacityPressure: params.opacityPressure !== false
