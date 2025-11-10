@@ -2451,6 +2451,140 @@ const FileManager = {
         }
     },
     
+    async processProcreateSet(zipData, fileName) {
+        const brushes = [];
+        
+        try {
+            Logger.info('Parsing Procreate brushset...');
+            
+            // Procreate brushsets contain:
+            // - Brushes.archive (binary plist with brush metadata)
+            // - PNG files for brush shapes (named with UUIDs)
+            // - Grain images for textures
+            
+            // Collect all PNG files (brush shapes)
+            const brushImages = [];
+            zipData.forEach((relativePath, file) => {
+                if (!file.dir && relativePath.toLowerCase().endsWith('.png')) {
+                    // Skip grain/texture files (usually in Grain folder)
+                    if (!relativePath.toLowerCase().includes('grain')) {
+                        brushImages.push({ file, path: relativePath });
+                    }
+                }
+            });
+            
+            Logger.info(`Found ${brushImages.length} brush images in Procreate set`);
+            
+            // Try to parse Brushes.archive if it exists
+            const archiveFile = zipData.file('Brushes.archive');
+            let brushMetadata = [];
+            
+            if (archiveFile) {
+                try {
+                    const archiveData = await archiveFile.async('uint8array');
+                    brushMetadata = this.parseProcreateArchive(archiveData);
+                    Logger.info(`Parsed ${brushMetadata.length} brush definitions from archive`);
+                } catch (error) {
+                    Logger.warning(`Could not parse Brushes.archive: ${error.message}`);
+                }
+            }
+            
+            // Process each brush image
+            for (let i = 0; i < brushImages.length; i++) {
+                const { file, path } = brushImages[i];
+                
+                try {
+                    const blob = await file.async('blob');
+                    const fileName = path.split('/').pop();
+                    const brushName = fileName.replace('.png', '');
+                    
+                    // Try to find metadata for this brush
+                    const metadata = brushMetadata.find(m => 
+                        m.shapeImage && m.shapeImage.includes(brushName)
+                    ) || {};
+                    
+                    const imageFile = new File([blob], fileName, { type: 'image/png' });
+                    const brush = await this.processImageFile(imageFile);
+                    
+                    if (brush) {
+                        // Use Procreate brush name if available
+                        if (metadata.name) {
+                            brush.name = UI.sanitizeName(metadata.name);
+                        } else {
+                            brush.name = UI.sanitizeName(`Procreate_${i + 1}`);
+                        }
+                        
+                        // Apply Procreate settings if available
+                        if (metadata.size) {
+                            brush.settings.size = Math.round(metadata.size * 100);
+                        }
+                        if (metadata.opacity) {
+                            brush.settings.opacity = Math.round(metadata.opacity * 100);
+                        }
+                        if (metadata.spacing) {
+                            brush.settings.spacing = Math.round(metadata.spacing * 100);
+                        }
+                        
+                        brush.metadata = {
+                            ...brush.metadata,
+                            source: 'Procreate',
+                            extractedFrom: fileName,
+                            procreateMetadata: metadata
+                        };
+                        
+                        brushes.push(brush);
+                    }
+                } catch (error) {
+                    Logger.warning(`Failed to process Procreate brush ${path}: ${error.message}`);
+                }
+            }
+            
+            Logger.success(`Extracted ${brushes.length} brushes from Procreate set`);
+            
+        } catch (error) {
+            Logger.error(`Procreate brushset processing error: ${error.message}`);
+        }
+        
+        return brushes;
+    },
+    
+    parseProcreateArchive(data) {
+        // Procreate's Brushes.archive is a binary plist format
+        // This is a simplified parser that extracts basic information
+        const brushes = [];
+        
+        try {
+            // Convert to string to search for brush names and properties
+            const text = new TextDecoder('utf-8', { fatal: false }).decode(data);
+            
+            // Look for brush name patterns
+            // Procreate stores brush names as strings in the plist
+            const nameMatches = text.match(/brushName[^\x00]{1,100}?([A-Za-z0-9 _-]{3,50})/g);
+            
+            if (nameMatches) {
+                nameMatches.forEach(match => {
+                    const name = match.replace(/brushName[^\x00]*?([A-Za-z0-9 _-]+).*/, '$1').trim();
+                    if (name && name.length > 2) {
+                        brushes.push({
+                            name: name,
+                            size: 0.5,  // Default values
+                            opacity: 1.0,
+                            spacing: 0.1
+                        });
+                    }
+                });
+            }
+            
+            // If no names found, return empty array
+            // The caller will use default names
+            
+        } catch (error) {
+            Logger.warning(`Archive parsing error: ${error.message}`);
+        }
+        
+        return brushes;
+    },
+    
     async processZipFile(zipFile, depth = 0) {
         const brushes = [];
         const MAX_DEPTH = 5; // Prevent infinite recursion
@@ -2466,6 +2600,16 @@ const FileManager = {
             const zipData = await zip.loadAsync(zipFile);
             
             Logger.info(`Extracting ZIP: ${zipFile.name} (depth: ${depth})`);
+            
+            // Check if this is a Procreate brushset
+            const isProcreate = zipFile.name.toLowerCase().endsWith('.brushset') || 
+                               zipData.file('Brushes.archive') !== null;
+            
+            if (isProcreate) {
+                Logger.info(`Detected Procreate brushset: ${zipFile.name}`);
+                const procreateBrushes = await this.processProcreateSet(zipData, zipFile.name);
+                return procreateBrushes;
+            }
             
             // Collect files by type
             const imageFiles = [];
