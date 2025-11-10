@@ -2727,87 +2727,95 @@ const FileManager = {
         const brushes = [];
         
         try {
-            Logger.info('Parsing Procreate brushset...');
+            Logger.info('Parsing Procreate brushset with enhanced parameter extraction...');
             
             // Procreate brushsets contain:
-            // - Brushes.archive (binary plist with brush metadata)
-            // - PNG files for brush shapes (named with UUIDs)
-            // - Grain images for textures
+            // - Brush directories (UUID-named folders)
+            // - Shape.png or Grain.png in each brush directory
+            // - Brush_resolved_params.json with full brush parameters
             
-            // Collect all PNG files (brush shapes)
-            const brushImages = [];
-            zipData.forEach((relativePath, file) => {
-                if (!file.dir && relativePath.toLowerCase().endsWith('.png')) {
-                    // Skip grain/texture files (usually in Grain folder)
-                    if (!relativePath.toLowerCase().includes('grain')) {
-                        brushImages.push({ file, path: relativePath });
+            // First pass: identify brush directories
+            const brushDirs = {};
+            
+            zipData.forEach((relativePath, zipEntry) => {
+                if (!zipEntry.dir) {
+                    const parts = relativePath.split('/');
+                    if (parts.length >= 2) {
+                        const brushDir = parts[0];
+                        const fileName = parts[parts.length - 1];
+                        
+                        if (!brushDirs[brushDir]) {
+                            brushDirs[brushDir] = { pngs: [], json: null };
+                        }
+                        
+                        // Look for image files (Shape.png, Grain.png, etc.)
+                        if (fileName.match(/\.(png|jpg|jpeg)$/i)) {
+                            brushDirs[brushDir].pngs.push({ filename: relativePath, zipEntry });
+                        }
+                        // Look for the resolved parameter file
+                        else if (fileName === 'Brush_resolved_params.json') {
+                            brushDirs[brushDir].json = zipEntry;
+                        }
                     }
                 }
             });
             
-            Logger.info(`Found ${brushImages.length} brush images in Procreate set`);
+            Logger.info(`Found ${Object.keys(brushDirs).length} brush directories`);
             
-            // Try to parse Brushes.archive if it exists
-            const archiveFile = zipData.file('Brushes.archive');
-            let brushMetadata = [];
-            
-            if (archiveFile) {
+            // Second pass: process each brush directory
+            for (const [brushDir, brushData] of Object.entries(brushDirs)) {
                 try {
-                    const archiveData = await archiveFile.async('uint8array');
-                    brushMetadata = this.parseProcreateArchive(archiveData);
-                    Logger.info(`Parsed ${brushMetadata.length} brush definitions from archive`);
-                } catch (error) {
-                    Logger.warning(`Could not parse Brushes.archive: ${error.message}`);
-                }
-            }
-            
-            // Process each brush image
-            for (let i = 0; i < brushImages.length; i++) {
-                const { file, path } = brushImages[i];
-                
-                try {
-                    const blob = await file.async('blob');
-                    const fileName = path.split('/').pop();
-                    const brushName = fileName.replace('.png', '');
+                    if (brushData.pngs.length === 0) continue;
                     
-                    // Try to find metadata for this brush
-                    const metadata = brushMetadata.find(m => 
-                        m.shapeImage && m.shapeImage.includes(brushName)
-                    ) || {};
+                    // 1. Extract PNG data and create object URLs
+                    const tipPNGs = [];
+                    for (const pngInfo of brushData.pngs) {
+                        try {
+                            const pngData = await pngInfo.zipEntry.async('arraybuffer');
+                            const blob = new Blob([pngData], { type: 'image/png' });
+                            const objectUrl = URL.createObjectURL(blob);
+                            MemoryManager.addBlobUrl(objectUrl);
+                            tipPNGs.push(objectUrl);
+                        } catch (error) {
+                            Logger.warning(`Skipping PNG in ${brushDir}: ${error.message}`);
+                        }
+                    }
                     
-                    const imageFile = new File([blob], fileName, { type: 'image/png' });
-                    const brush = await this.processImageFile(imageFile);
+                    if (tipPNGs.length === 0) continue;
                     
-                    if (brush) {
-                        // Use Procreate brush name if available
-                        if (metadata.name) {
-                            brush.name = UI.sanitizeName(metadata.name);
-                        } else {
-                            brush.name = UI.sanitizeName(`Procreate_${i + 1}`);
+                    // 2. Extract and parse JSON parameters
+                    let procreateParams = {};
+                    if (brushData.json) {
+                        try {
+                            const jsonText = await brushData.json.async('text');
+                            procreateParams = JSON.parse(jsonText);
+                            Logger.info(`Loaded parameters for ${brushDir}`);
+                        } catch (error) {
+                            Logger.warning(`Failed to parse JSON for ${brushDir}: ${error.message}`);
                         }
-                        
-                        // Apply Procreate settings if available
-                        if (metadata.size) {
-                            brush.settings.size = Math.round(metadata.size * 100);
-                        }
-                        if (metadata.opacity) {
-                            brush.settings.opacity = Math.round(metadata.opacity * 100);
-                        }
-                        if (metadata.spacing) {
-                            brush.settings.spacing = Math.round(metadata.spacing * 100);
-                        }
-                        
-                        brush.metadata = {
-                            ...brush.metadata,
+                    }
+                    
+                    // 3. Create brush object with Procreate parameters
+                    const brush = {
+                        name: UI.sanitizeName(brushDir),
+                        type: 'procreate',
+                        tipPNGs: tipPNGs,
+                        width: 512,
+                        height: 512,
+                        settings: this.getDefaultSettings(),
+                        metadata: {
                             source: 'Procreate',
                             extractedFrom: fileName,
-                            procreateMetadata: metadata
-                        };
-                        
-                        brushes.push(brush);
-                    }
+                            procreateMetadata: procreateParams,
+                            dateAdded: Date.now()
+                        }
+                    };
+                    
+                    brushes.push(brush);
+                    Logger.info(`Extracted brush: ${brush.name}`);
+                    
                 } catch (error) {
-                    Logger.warning(`Failed to process Procreate brush ${path}: ${error.message}`);
+                    Logger.warning(`Failed to process brush ${brushDir}: ${error.message}`);
                 }
             }
             
@@ -3221,8 +3229,11 @@ const BrushSettingsAutoCorrector = {
     applyProcreateSettings(brush, metadata) {
         let applied = false;
         
-        // Size (Procreate uses 0-1 range, CSP uses pixels)
-        if (metadata.size !== undefined) {
+        // Size (Procreate brushSize is typically 0-1 range)
+        if (metadata.brushSize !== undefined) {
+            brush.settings.size = this.normalizeProcreateSize(metadata.brushSize);
+            applied = true;
+        } else if (metadata.size !== undefined) {
             brush.settings.size = this.normalizeProcreateSize(metadata.size);
             applied = true;
         }
@@ -3260,12 +3271,36 @@ const BrushSettingsAutoCorrector = {
         
         // Pressure sensitivity
         if (metadata.pressureSize !== undefined) {
-            brush.settings.sizePressure = metadata.pressureSize;
+            brush.settings.sizePressure = metadata.pressureSize > 0;
             applied = true;
         }
         
         if (metadata.pressureOpacity !== undefined) {
-            brush.settings.opacityPressure = metadata.pressureOpacity;
+            brush.settings.opacityPressure = metadata.pressureOpacity > 0;
+            applied = true;
+        }
+        
+        // Glaze (Wet Mix) - affects blending
+        if (metadata.glaze !== undefined) {
+            brush.metadata.glaze = metadata.glaze;
+            applied = true;
+        }
+        
+        // Scatter/Jitter
+        if (metadata.scatter !== undefined && metadata.scatter > 0) {
+            // Adjust spacing based on scatter
+            brush.settings.spacing = Math.max(5, brush.settings.spacing - metadata.scatter * 20);
+            applied = true;
+        }
+        
+        // Texture properties
+        if (metadata.textureScale !== undefined) {
+            brush.metadata.textureScale = Math.round(metadata.textureScale * 100);
+            applied = true;
+        }
+        
+        if (metadata.textureBrightness !== undefined) {
+            brush.metadata.textureDensity = Math.round(metadata.textureBrightness * 100);
             applied = true;
         }
         
