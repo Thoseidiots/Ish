@@ -899,6 +899,31 @@ window.addEventListener('DOMContentLoaded', async () => {
     await Promise.all(initPromises);
     
     PressureCurveUtils.initCurveEditors();
+    
+    // Auto-load sample.sut as template
+    if (SQL_READY) {
+        try {
+            Logger.info('Auto-loading sample.sut template...');
+            const response = await fetch('sample.sut');
+            if (response.ok) {
+                const blob = await response.blob();
+                const file = new File([blob], 'sample.sut', { type: 'application/x-sqlite3' });
+                await TemplateManager.loadTemplate(file);
+                Logger.success('✅ Using verified CSP template from sample.sut');
+                UI.showInfo('Using verified CSP template (sample.sut) - Ready to convert brushes!');
+            } else {
+                Logger.warning('sample.sut not found, creating default template');
+                // Fallback to default template if sample.sut doesn't exist
+                await TemplateManager.loadDefaultTemplate();
+                UI.showInfo('Using default CSP template - Ready to convert brushes!');
+            }
+        } catch (error) {
+            Logger.warning(`Could not load sample.sut: ${error.message}, using default template`);
+            await TemplateManager.loadDefaultTemplate();
+            UI.showInfo('Using default CSP template - Ready to convert brushes!');
+        }
+    }
+    
     UI.showLoading(false);
     
     if (AppState.filesLoaded && AppState.templateLoaded) {
