@@ -103,3 +103,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(4px);
 }
+
+.preview-item:hover .brush-tooltip {
+    opacity: 1;
+}
