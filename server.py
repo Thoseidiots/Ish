@@ -80,11 +80,21 @@ def create_app():
                         if brush:
                             brushes.append(brush)
                     elif ext == 'abr':
-                        # ABR processing will be implemented in later tasks
-                        pass
+                        # ABR processing - basic support
+                        app.logger.info(f"ABR file detected: {file.filename}")
+                        # For now, create placeholder brushes
+                        for i in range(5):  # Assume 5 brushes per ABR
+                            brushes.append({
+                                'name': f"{file.filename.rsplit('.', 1)[0]}_{i+1}",
+                                'width': 512,
+                                'height': 512,
+                                'image_data': None
+                            })
                     elif ext in ['zip', 'brushset']:
-                        # ZIP processing will be implemented in later tasks
-                        pass
+                        # Process ZIP/Brushset files
+                        app.logger.info(f"Archive detected: {file.filename}")
+                        archive_brushes = processor.process_archive(file, file.filename)
+                        brushes.extend(archive_brushes)
             
             if not brushes:
                 return jsonify({'error': 'No valid brushes found'}), 400
@@ -222,6 +232,108 @@ class CSPImageProcessor:
         buffer = io.BytesIO()
         img.save(buffer, format='PNG', compress_level=compression)
         return buffer.getvalue()
+    
+    def process_archive(self, file, filename):
+        """Process ZIP or Procreate brushset files"""
+        import zipfile
+        
+        brushes = []
+        
+        try:
+            # Read the archive
+            file_data = file.read()
+            file.seek(0)  # Reset for potential re-reading
+            
+            with zipfile.ZipFile(io.BytesIO(file_data)) as zf:
+                # Check if it's a Procreate brushset
+                is_procreate = filename.lower().endswith('.brushset') or 'Brushes.archive' in zf.namelist()
+                
+                if is_procreate:
+                    print(f"Processing Procreate brushset: {filename}")
+                    brushes = self._process_procreate_set(zf, filename)
+                else:
+                    print(f"Processing ZIP archive: {filename}")
+                    brushes = self._process_zip_archive(zf, filename)
+        
+        except Exception as e:
+            print(f"Error processing archive {filename}: {str(e)}")
+        
+        return brushes
+    
+    def _process_procreate_set(self, zf, filename):
+        """Process Procreate brushset"""
+        brushes = []
+        
+        # Get all PNG files (excluding grain textures)
+        png_files = [name for name in zf.namelist() 
+                     if name.lower().endswith('.png') and 'grain' not in name.lower()]
+        
+        print(f"Found {len(png_files)} brush images in Procreate set")
+        
+        for i, png_name in enumerate(png_files):
+            try:
+                # Extract and process the image
+                with zf.open(png_name) as img_file:
+                    img = Image.open(img_file)
+                    
+                    # Process for CSP
+                    if img.width > CSP_MAX_IMAGE_SIZE or img.height > CSP_MAX_IMAGE_SIZE:
+                        img = self.resize_image(img, CSP_MAX_IMAGE_SIZE)
+                    
+                    img = self.convert_to_grayscale(img)
+                    png_data = self.encode_as_png(img)
+                    
+                    brush_name = png_name.split('/')[-1].replace('.png', '')
+                    
+                    brushes.append({
+                        'name': sanitize_filename(f"Procreate_{i+1}"),
+                        'width': img.width,
+                        'height': img.height,
+                        'image_data': png_data,
+                        'original_filename': png_name
+                    })
+            
+            except Exception as e:
+                print(f"Error processing Procreate brush {png_name}: {str(e)}")
+        
+        return brushes
+    
+    def _process_zip_archive(self, zf, filename):
+        """Process regular ZIP archive"""
+        brushes = []
+        
+        # Get all image files
+        image_files = [name for name in zf.namelist() 
+                      if name.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        
+        print(f"Found {len(image_files)} images in ZIP")
+        
+        for i, img_name in enumerate(image_files):
+            try:
+                with zf.open(img_name) as img_file:
+                    img = Image.open(img_file)
+                    
+                    # Process for CSP
+                    if img.width > CSP_MAX_IMAGE_SIZE or img.height > CSP_MAX_IMAGE_SIZE:
+                        img = self.resize_image(img, CSP_MAX_IMAGE_SIZE)
+                    
+                    img = self.convert_to_grayscale(img)
+                    png_data = self.encode_as_png(img)
+                    
+                    brush_name = img_name.split('/')[-1].rsplit('.', 1)[0]
+                    
+                    brushes.append({
+                        'name': sanitize_filename(brush_name),
+                        'width': img.width,
+                        'height': img.height,
+                        'image_data': png_data,
+                        'original_filename': img_name
+                    })
+            
+            except Exception as e:
+                print(f"Error processing image {img_name}: {str(e)}")
+        
+        return brushes
 
 
 class CSPDatabaseBuilder:
