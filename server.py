@@ -371,7 +371,11 @@ class CSPDatabaseBuilder:
             
             for i, brush in enumerate(brushes):
                 variant_id_counter += 1
-                node_uuid = self._insert_brush(brush, variant_id_counter, prev_node_uuid, settings)
+                current_variant_id = variant_id_counter
+                variant_id_counter += 1
+                init_variant_id = variant_id_counter
+                
+                node_uuid = self._insert_brush(brush, current_variant_id, init_variant_id, prev_node_uuid, settings)
                 
                 if i == 0:
                     first_brush_uuid = node_uuid
@@ -526,7 +530,7 @@ class CSPDatabaseBuilder:
             (root_uuid, package_name, 0, 0, None)
         )
     
-    def _insert_brush(self, brush, variant_id, prev_node_uuid=None, settings=None):
+    def _insert_brush(self, brush, variant_id, init_variant_id, prev_node_uuid=None, settings=None):
         """Insert brush with correct CSP structure"""
         # Generate UUID for this brush node
         node_uuid = self._generate_uuid()
@@ -541,7 +545,25 @@ class CSPDatabaseBuilder:
         # Default pressure curve (linear)
         default_curve = [(0.0, 0.0), (1.0, 1.0)]
         
-        # Insert Variant record (brush settings)
+        # Prepare variant data
+        variant_data = (
+            settings.get('opacity', 100),
+            1,  # AntiAlias enabled
+            0,  # CompositeMode: normal
+            float(settings.get('size', 50)),
+            0,  # BrushSizeUnit: pixels
+            self._encode_effector_blob(settings.get('sizePressure', False), default_curve),
+            settings.get('opacity', 100),
+            self._encode_effector_blob(settings.get('opacityPressure', False), default_curve),
+            settings.get('hardness', 50),
+            float(settings.get('spacing', 10)),
+            100,  # BrushThickness
+            float(settings.get('angle', 0)),
+            1 if material_uuid else 0,  # BrushUsePatternImage
+            self._encode_brush_pattern_array(brush['name'], material_uuid)
+        )
+        
+        # Insert CURRENT Variant record
         self.cursor.execute(
             """INSERT INTO Variant (
                 VariantID, Opacity, AntiAlias, CompositeMode,
@@ -551,39 +573,43 @@ class CSPDatabaseBuilder:
                 BrushThickness, BrushRotation,
                 BrushUsePatternImage, BrushPatternImageArray
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                variant_id,
-                settings.get('opacity', 100),
-                1,  # AntiAlias enabled
-                0,  # CompositeMode: normal
-                float(settings.get('size', 50)),
-                0,  # BrushSizeUnit: pixels
-                self._encode_effector_blob(settings.get('sizePressure', False), default_curve),
-                settings.get('opacity', 100),
-                self._encode_effector_blob(settings.get('opacityPressure', False), default_curve),
-                settings.get('hardness', 50),
-                float(settings.get('spacing', 10)),
-                100,  # BrushThickness
-                float(settings.get('angle', 0)),
-                1 if material_uuid else 0,  # BrushUsePatternImage
-                self._encode_brush_pattern_array(brush['name'], material_uuid)
-            )
+            (variant_id,) + variant_data
         )
         
-        # Insert Node record (tool hierarchy)
+        # Insert INITIAL Variant record (same settings)
+        self.cursor.execute(
+            """INSERT INTO Variant (
+                VariantID, Opacity, AntiAlias, CompositeMode,
+                BrushSize, BrushSizeUnit, BrushSizeEffector,
+                BrushFlow, BrushFlowEffector,
+                BrushHardness, BrushInterval,
+                BrushThickness, BrushRotation,
+                BrushUsePatternImage, BrushPatternImageArray
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (init_variant_id,) + variant_data
+        )
+        
+        # Insert Node record with proper default values
         self.cursor.execute(
             """INSERT INTO Node (
                 NodeUuid, NodeName, NodeLock, NodeHidden,
+                NodeInputOp, NodeOutputOp, NodeRangeOp,
+                NodeIcon, NodeIconColor,
                 NodeNextUuid, NodeVariantID, NodeInitVariantID
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 node_uuid,
                 brush['name'],
-                0,  # NodeLock: unlocked
-                0,  # NodeHidden: visible
+                0,   # NodeLock: unlocked
+                0,   # NodeHidden: visible
+                10,  # NodeInputOp: 10 (default)
+                10,  # NodeOutputOp: 10 (default)
+                0,   # NodeRangeOp: 0 (default)
+                128, # NodeIcon: 128 (default brush icon)
+                0,   # NodeIconColor: 0 (default)
                 None,  # NodeNextUuid: will be updated
                 variant_id,
-                variant_id
+                init_variant_id
             )
         )
         
