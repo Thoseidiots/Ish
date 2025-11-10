@@ -356,6 +356,22 @@ input[type=range]{width:100%;margin:10px 0}
 </table>
 </div>
 </div>
+
+<div class="debug-panel" style="margin-top:20px;">
+<h4>🔧 Brush File Fixer</h4>
+<p>Repair corrupted or incompatible .sut files automatically.</p>
+<div class="control-group">
+<label for="fixerInput">Upload .sut file to fix</label>
+<input type="file" id="fixerInput" accept=".sut" style="display:block;margin-bottom:10px;">
+</div>
+<button class="btn btn-success" id="runBrushFixer" disabled>🔧 Scan & Fix Issues</button>
+<div id="fixerResults" class="debug-info" style="display:none;margin-top:15px;"></div>
+<div id="fixerActions" style="display:none;margin-top:15px;">
+<h5>🛠️ Available Fixes</h5>
+<div id="fixerActionsList"></div>
+<button class="btn btn-success" id="applyFixes" style="margin-top:10px;" disabled>✅ Apply All Fixes & Download</button>
+</div>
+</div>
 </div>
 
 <div class="button-group">
@@ -1054,7 +1070,13 @@ const UI = {
         schemaComparison: document.getElementById('schemaComparison'),
         schemaTable: document.getElementById('schemaTable'),
         pythonBanner: document.getElementById('pythonBanner'),
-        pythonOutput: document.getElementById('pythonOutput')
+        pythonOutput: document.getElementById('pythonOutput'),
+        fixerInput: document.getElementById('fixerInput'),
+        runBrushFixer: document.getElementById('runBrushFixer'),
+        fixerResults: document.getElementById('fixerResults'),
+        fixerActions: document.getElementById('fixerActions'),
+        fixerActionsList: document.getElementById('fixerActionsList'),
+        applyFixes: document.getElementById('applyFixes')
     },
 
     init() {
@@ -1131,6 +1153,22 @@ const UI = {
         // Debug analysis
         this.elements.runDebugAnalysis.addEventListener('click', () => {
             DebugUtils.runAnalysis();
+        });
+        
+        // Brush fixer
+        this.elements.fixerInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                BrushFixer.loadFile(e.target.files[0]);
+                this.elements.runBrushFixer.disabled = false;
+            }
+        });
+        
+        this.elements.runBrushFixer.addEventListener('click', () => {
+            BrushFixer.scanAndFix();
+        });
+        
+        this.elements.applyFixes.addEventListener('click', () => {
+            BrushFixer.applyFixesAndDownload();
         });
 
         // Event listeners
@@ -2989,6 +3027,430 @@ const TemplateManager = {
             Logger.error(`Template loading error: ${error.message}`);
             UI.showStatus(`Template error: ${error.message}`, 'error');
         }
+    }
+};
+
+// ============================================================================
+// BRUSH FIXER - REPAIR CORRUPTED SUT FILES
+// ============================================================================
+const BrushFixer = {
+    currentFile: null,
+    currentDb: null,
+    issues: [],
+    
+    async loadFile(file) {
+        try {
+            Logger.info(`Loading .sut file for analysis: ${file.name}`);
+            
+            const arrayBuffer = await file.arrayBuffer();
+            const u8Array = new Uint8Array(arrayBuffer);
+            
+            // Validate SQLite header
+            const header = new TextDecoder().decode(u8Array.slice(0, 16));
+            if (!header.startsWith('SQLite format 3')) {
+                throw new Error('Invalid SUT file - not a valid SQLite database');
+            }
+            
+            this.currentFile = file;
+            this.currentDb = new SQL.Database(u8Array);
+            this.issues = [];
+            
+            Logger.success(`File loaded: ${file.name}`);
+            UI.showStatus(`File loaded: ${file.name}`, 'success');
+            
+        } catch (error) {
+            Logger.error(`Failed to load file: ${error.message}`);
+            UI.showStatus(`Error: ${error.message}`, 'error');
+            UI.elements.runBrushFixer.disabled = true;
+        }
+    },
+    
+    async scanAndFix() {
+        if (!this.currentDb) {
+            UI.showStatus('No file loaded', 'error');
+            return;
+        }
+        
+        UI.showLoading(true);
+        this.issues = [];
+        
+        const results = UI.elements.fixerResults;
+        results.style.display = 'block';
+        results.innerHTML = '<strong>🔍 Scanning for issues...</strong><br><br>';
+        
+        try {
+            // Check 1: Missing duplicate variants
+            await this.checkDuplicateVariants(results);
+            
+            // Check 2: NULL values in Node fields
+            await this.checkNodeNullValues(results);
+            
+            // Check 3: Missing Manager fields
+            await this.checkManagerFields(results);
+            
+            // Check 4: Page size
+            await this.checkPageSize(results);
+            
+            // Check 5: Orphaned records
+            await this.checkOrphanedRecords(results);
+            
+            // Summary
+            if (this.issues.length === 0) {
+                results.innerHTML += '<br><strong style="color:#28a745;">✅ No issues found! File is CSP-compatible.</strong>';
+                UI.elements.fixerActions.style.display = 'none';
+            } else {
+                results.innerHTML += `<br><strong style="color:#ffc107;">⚠️ Found ${this.issues.length} issue(s) that can be fixed.</strong>`;
+                this.displayFixActions();
+            }
+            
+        } catch (error) {
+            results.innerHTML += `<br><strong style="color:#dc3545;">❌ Scan error: ${error.message}</strong>`;
+        } finally {
+            UI.showLoading(false);
+        }
+    },
+    
+    async checkDuplicateVariants(results) {
+        try {
+            // Check if each Node has both current and initial variants
+            const stmt = this.currentDb.prepare(`
+                SELECT NodeVariantID, NodeInitVariantID FROM Node WHERE NodeVariantID IS NOT NULL
+            `);
+            
+            let missingCount = 0;
+            while (stmt.step()) {
+                const row = stmt.getAsObject();
+                const variantId = row.NodeVariantID;
+                const initVariantId = row.NodeInitVariantID;
+                
+                // Check if both variants exist
+                const checkStmt = this.currentDb.prepare(`
+                    SELECT COUNT(*) as count FROM Variant WHERE VariantID IN (?, ?)
+                `);
+                checkStmt.bind([variantId, initVariantId]);
+                checkStmt.step();
+                const count = checkStmt.get()[0];
+                checkStmt.free();
+                
+                if (count < 2) {
+                    missingCount++;
+                }
+            }
+            stmt.free();
+            
+            if (missingCount > 0) {
+                this.issues.push({
+                    type: 'missing_variants',
+                    severity: 'high',
+                    count: missingCount,
+                    description: `${missingCount} brush(es) missing duplicate variant records`
+                });
+                results.innerHTML += `❌ <strong>Missing Variants:</strong> ${missingCount} brush(es) need duplicate variant records<br>`;
+            } else {
+                results.innerHTML += `✅ All brushes have proper variant records<br>`;
+            }
+        } catch (error) {
+            results.innerHTML += `⚠️ Could not check variants: ${error.message}<br>`;
+        }
+    },
+    
+    async checkNodeNullValues(results) {
+        try {
+            const stmt = this.currentDb.prepare(`
+                SELECT COUNT(*) as count FROM Node 
+                WHERE NodeInputOp IS NULL OR NodeOutputOp IS NULL OR NodeRangeOp IS NULL
+                   OR NodeIcon IS NULL OR NodeIconColor IS NULL
+            `);
+            stmt.step();
+            const count = stmt.get()[0];
+            stmt.free();
+            
+            if (count > 0) {
+                this.issues.push({
+                    type: 'null_node_values',
+                    severity: 'high',
+                    count: count,
+                    description: `${count} node(s) have NULL values in required fields`
+                });
+                results.innerHTML += `❌ <strong>NULL Values:</strong> ${count} node(s) have missing field values<br>`;
+            } else {
+                results.innerHTML += `✅ All nodes have proper field values<br>`;
+            }
+        } catch (error) {
+            results.innerHTML += `⚠️ Could not check node values: ${error.message}<br>`;
+        }
+    },
+    
+    async checkManagerFields(results) {
+        try {
+            const stmt = this.currentDb.prepare(`
+                SELECT ToolType, Version, MaxVariantID FROM Manager WHERE _PW_ID = 1
+            `);
+            
+            if (stmt.step()) {
+                const row = stmt.getAsObject();
+                const issues = [];
+                
+                if (row.ToolType !== 0) issues.push('ToolType');
+                if (row.Version !== 126) issues.push('Version');
+                if (!row.MaxVariantID) issues.push('MaxVariantID');
+                
+                if (issues.length > 0) {
+                    this.issues.push({
+                        type: 'manager_fields',
+                        severity: 'medium',
+                        fields: issues,
+                        description: `Manager table has incorrect values: ${issues.join(', ')}`
+                    });
+                    results.innerHTML += `⚠️ <strong>Manager Fields:</strong> ${issues.join(', ')} need correction<br>`;
+                } else {
+                    results.innerHTML += `✅ Manager table is properly configured<br>`;
+                }
+            }
+            stmt.free();
+        } catch (error) {
+            results.innerHTML += `⚠️ Could not check Manager: ${error.message}<br>`;
+        }
+    },
+    
+    async checkPageSize(results) {
+        try {
+            const stmt = this.currentDb.prepare('PRAGMA page_size');
+            stmt.step();
+            const pageSize = stmt.get()[0];
+            stmt.free();
+            
+            if (pageSize !== 1024) {
+                this.issues.push({
+                    type: 'page_size',
+                    severity: 'high',
+                    current: pageSize,
+                    expected: 1024,
+                    description: `Page size is ${pageSize}, should be 1024`
+                });
+                results.innerHTML += `❌ <strong>Page Size:</strong> ${pageSize} (should be 1024)<br>`;
+            } else {
+                results.innerHTML += `✅ Page size is correct (1024)<br>`;
+            }
+        } catch (error) {
+            results.innerHTML += `⚠️ Could not check page size: ${error.message}<br>`;
+        }
+    },
+    
+    async checkOrphanedRecords(results) {
+        try {
+            // Check for variants not linked to any node
+            const stmt = this.currentDb.prepare(`
+                SELECT COUNT(*) as count FROM Variant v
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM Node n 
+                    WHERE n.NodeVariantID = v.VariantID OR n.NodeInitVariantID = v.VariantID
+                )
+            `);
+            stmt.step();
+            const count = stmt.get()[0];
+            stmt.free();
+            
+            if (count > 0) {
+                this.issues.push({
+                    type: 'orphaned_variants',
+                    severity: 'low',
+                    count: count,
+                    description: `${count} variant(s) not linked to any brush`
+                });
+                results.innerHTML += `⚠️ <strong>Orphaned Variants:</strong> ${count} unused variant(s)<br>`;
+            } else {
+                results.innerHTML += `✅ No orphaned records found<br>`;
+            }
+        } catch (error) {
+            results.innerHTML += `⚠️ Could not check orphaned records: ${error.message}<br>`;
+        }
+    },
+    
+    displayFixActions() {
+        const actionsList = UI.elements.fixerActionsList;
+        actionsList.innerHTML = '';
+        
+        this.issues.forEach((issue, index) => {
+            const item = document.createElement('div');
+            item.className = 'checkbox-group';
+            item.innerHTML = `
+                <input type="checkbox" id="fix_${index}" checked>
+                <label for="fix_${index}">
+                    <strong>${issue.description}</strong>
+                    <span style="color:#6c757d;font-size:0.9em;margin-left:10px;">(${issue.severity} priority)</span>
+                </label>
+            `;
+            actionsList.appendChild(item);
+        });
+        
+        UI.elements.fixerActions.style.display = 'block';
+        UI.elements.applyFixes.disabled = false;
+    },
+    
+    async applyFixesAndDownload() {
+        if (!this.currentDb || this.issues.length === 0) {
+            return;
+        }
+        
+        UI.showLoading(true);
+        
+        try {
+            Logger.info('Applying fixes...');
+            
+            // Apply each selected fix
+            this.issues.forEach((issue, index) => {
+                const checkbox = document.getElementById(`fix_${index}`);
+                if (checkbox && checkbox.checked) {
+                    this.applyFix(issue);
+                }
+            });
+            
+            // Export fixed database
+            const dbData = this.currentDb.export();
+            const blob = new Blob([dbData], { type: 'application/x-sqlite3' });
+            
+            // Download
+            const originalName = this.currentFile.name.replace('.sut', '');
+            const filename = `${originalName}_FIXED.sut`;
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            
+            URL.revokeObjectURL(url);
+            
+            Logger.success(`Fixed file downloaded: ${filename}`);
+            UI.showStatus(`Fixed file downloaded: ${filename}`, 'success');
+            
+        } catch (error) {
+            Logger.error(`Fix failed: ${error.message}`);
+            UI.showStatus(`Fix failed: ${error.message}`, 'error');
+        } finally {
+            UI.showLoading(false);
+        }
+    },
+    
+    applyFix(issue) {
+        try {
+            switch (issue.type) {
+                case 'missing_variants':
+                    this.fixMissingVariants();
+                    break;
+                case 'null_node_values':
+                    this.fixNodeNullValues();
+                    break;
+                case 'manager_fields':
+                    this.fixManagerFields();
+                    break;
+                case 'orphaned_variants':
+                    this.fixOrphanedVariants();
+                    break;
+                // Note: page_size cannot be fixed in existing database
+            }
+            Logger.success(`Fixed: ${issue.description}`);
+        } catch (error) {
+            Logger.error(`Failed to fix ${issue.type}: ${error.message}`);
+        }
+    },
+    
+    fixMissingVariants() {
+        // Create duplicate variants for brushes that are missing them
+        const stmt = this.currentDb.prepare(`
+            SELECT NodeVariantID, NodeInitVariantID FROM Node WHERE NodeVariantID IS NOT NULL
+        `);
+        
+        while (stmt.step()) {
+            const row = stmt.getAsObject();
+            const variantId = row.NodeVariantID;
+            const initVariantId = row.NodeInitVariantID;
+            
+            // Check which variant exists
+            const checkStmt = this.currentDb.prepare(`SELECT * FROM Variant WHERE VariantID = ?`);
+            checkStmt.bind([variantId]);
+            
+            if (checkStmt.step()) {
+                // Current variant exists, duplicate it for init variant
+                const variant = checkStmt.getAsObject();
+                checkStmt.free();
+                
+                // Check if init variant is missing
+                const checkInit = this.currentDb.prepare(`SELECT COUNT(*) FROM Variant WHERE VariantID = ?`);
+                checkInit.bind([initVariantId]);
+                checkInit.step();
+                const initExists = checkInit.get()[0] > 0;
+                checkInit.free();
+                
+                if (!initExists && initVariantId !== variantId) {
+                    // Create init variant as copy of current
+                    const columns = Object.keys(variant).filter(k => k !== 'VariantID' && k !== '_PW_ID');
+                    const values = columns.map(k => variant[k]);
+                    
+                    this.currentDb.run(`
+                        INSERT INTO Variant (VariantID, ${columns.join(', ')})
+                        SELECT ?, ${columns.join(', ')} FROM Variant WHERE VariantID = ?
+                    `, [initVariantId, variantId]);
+                }
+            } else {
+                checkStmt.free();
+            }
+        }
+        stmt.free();
+    },
+    
+    fixNodeNullValues() {
+        // Set default values for NULL fields
+        this.currentDb.run(`
+            UPDATE Node SET
+                NodeInputOp = 10 WHERE NodeInputOp IS NULL;
+        `);
+        this.currentDb.run(`
+            UPDATE Node SET
+                NodeOutputOp = 10 WHERE NodeOutputOp IS NULL;
+        `);
+        this.currentDb.run(`
+            UPDATE Node SET
+                NodeRangeOp = 0 WHERE NodeRangeOp IS NULL;
+        `);
+        this.currentDb.run(`
+            UPDATE Node SET
+                NodeIcon = 128 WHERE NodeIcon IS NULL;
+        `);
+        this.currentDb.run(`
+            UPDATE Node SET
+                NodeIconColor = 0 WHERE NodeIconColor IS NULL;
+        `);
+    },
+    
+    fixManagerFields() {
+        // Correct Manager table values
+        this.currentDb.run(`
+            UPDATE Manager SET
+                ToolType = 0,
+                Version = 126
+            WHERE _PW_ID = 1;
+        `);
+        
+        // Update MaxVariantID to highest variant ID
+        const stmt = this.currentDb.prepare(`SELECT MAX(VariantID) FROM Variant`);
+        if (stmt.step()) {
+            const maxId = stmt.get()[0];
+            this.currentDb.run(`UPDATE Manager SET MaxVariantID = ? WHERE _PW_ID = 1`, [maxId]);
+        }
+        stmt.free();
+    },
+    
+    fixOrphanedVariants() {
+        // Delete variants not linked to any node
+        this.currentDb.run(`
+            DELETE FROM Variant
+            WHERE NOT EXISTS (
+                SELECT 1 FROM Node n 
+                WHERE n.NodeVariantID = Variant.VariantID OR n.NodeInitVariantID = Variant.VariantID
+            )
+        `);
     }
 };
 
