@@ -369,7 +369,7 @@ input[type=range]{width:100%;margin:10px 0}
 <p>Validate and repair brush files (.sut, .abr, .brushset) automatically.</p>
 <div class="control-group">
 <label for="fixerInput">Upload brush file to validate/fix</label>
-<input type="file" id="fixerInput" accept=".sut,.abr,.brushset" style="display:block;margin-bottom:10px;">
+<input type="file" id="fixerInput" accept=".sut,.abr,.brushset,application/x-sqlite3,application/octet-stream,application/zip" style="display:block;margin-bottom:10px;">
 </div>
 <button class="btn btn-success" id="runBrushFixer" disabled>🔧 Scan & Validate</button>
 <div id="fixerResults" class="debug-info" style="display:none;margin-top:15px;"></div>
@@ -1168,10 +1168,10 @@ const UI = {
         });
         
         // Brush fixer
-        this.elements.fixerInput.addEventListener('change', (e) => {
+        this.elements.fixerInput.addEventListener('change', async (e) => {
             if (e.target.files.length > 0) {
-                BrushFixer.loadFile(e.target.files[0]);
-                this.elements.runBrushFixer.disabled = false;
+                const success = await BrushFixer.loadFile(e.target.files[0]);
+                this.elements.runBrushFixer.disabled = !success;
             }
         });
         
@@ -3734,11 +3734,12 @@ const BrushFixer = {
             }
             
             UI.showStatus(`File loaded: ${file.name}`, 'success');
+            return true;
             
         } catch (error) {
             Logger.error(`Failed to load file: ${error.message}`);
             UI.showStatus(`Error: ${error.message}`, 'error');
-            UI.elements.runBrushFixer.disabled = true;
+            return false;
         }
     },
     
