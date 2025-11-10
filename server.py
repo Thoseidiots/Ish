@@ -245,16 +245,39 @@ class CSPDatabaseBuilder:
             # Create schema
             self._create_schema()
             
-            # Insert manager record
-            root_tool_id = self._generate_uuid()
-            self._insert_manager(root_tool_id)
+            # Insert Manager record
+            root_uuid = self._generate_uuid()
+            self._insert_manager(root_uuid)
             
-            # Insert root tool
-            self._insert_root_tool(root_tool_id, package_name)
+            # Insert root Node
+            self._insert_root_node(root_uuid, package_name)
             
             # Insert brushes
-            for brush in brushes:
-                self._insert_brush(brush, root_tool_id, settings)
+            variant_id_counter = 1000
+            prev_node_uuid = None
+            first_brush_uuid = None
+            
+            for i, brush in enumerate(brushes):
+                variant_id_counter += 1
+                node_uuid = self._insert_brush(brush, variant_id_counter, prev_node_uuid, settings)
+                
+                if i == 0:
+                    first_brush_uuid = node_uuid
+                
+                prev_node_uuid = node_uuid
+            
+            # Update root node to point to first brush
+            if first_brush_uuid:
+                self.cursor.execute(
+                    "UPDATE Node SET NodeFirstChildUuid = ? WHERE NodeUuid = ?",
+                    (first_brush_uuid, root_uuid)
+                )
+            
+            # Update Manager with MaxVariantID
+            self.cursor.execute(
+                "UPDATE Manager SET MaxVariantID = ? WHERE _PW_ID = 1",
+                (variant_id_counter,)
+            )
             
             # Commit and close
             self.conn.commit()
@@ -277,190 +300,248 @@ class CSPDatabaseBuilder:
             raise e
     
     def _create_schema(self):
-        """Create CSP-compatible database schema"""
+        """Create CORRECT CSP-compatible database schema"""
         schema = """
-        PRAGMA page_size = 4096;
+        PRAGMA page_size = 1024;
         PRAGMA encoding = 'UTF-8';
-        PRAGMA foreign_keys = ON;
-        PRAGMA user_version = 100;
         
-        CREATE TABLE Manager (
-            _id INTEGER PRIMARY KEY,
-            Version INTEGER NOT NULL DEFAULT 1,
-            RootToolID BLOB,
-            CreateDate INTEGER NOT NULL,
-            ModifyDate INTEGER NOT NULL
+        CREATE TABLE Manager(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            ToolType INTEGER DEFAULT NULL,
+            Version INTEGER DEFAULT NULL,
+            RootUuid BLOB DEFAULT NULL,
+            CurrentNodeUuid BLOB DEFAULT NULL,
+            MaxVariantID INTEGER DEFAULT NULL,
+            CommonVariantID INTEGER DEFAULT NULL,
+            ObjectNodeUuid BLOB DEFAULT NULL,
+            PressureGraph BLOB DEFAULT NULL,
+            SavedCount INTEGER DEFAULT NULL
         );
         
-        CREATE TABLE ToolInfo (
-            ToolID BLOB PRIMARY KEY,
-            ParentToolID BLOB,
-            ToolName TEXT NOT NULL,
-            ToolType INTEGER NOT NULL DEFAULT 2,
-            ToolClass INTEGER NOT NULL DEFAULT 0,
-            ToolCategory INTEGER NOT NULL DEFAULT 10,
-            CreateDate INTEGER NOT NULL,
-            ModifyDate INTEGER NOT NULL,
-            FOREIGN KEY(ParentToolID) REFERENCES ToolInfo(ToolID) ON DELETE CASCADE
+        CREATE TABLE Node(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            NodeUuid BLOB DEFAULT NULL,
+            NodeName TEXT DEFAULT NULL,
+            NodeShortCutKey INTEGER DEFAULT NULL,
+            NodeLock INTEGER DEFAULT NULL,
+            NodeInputOp INTEGER DEFAULT NULL,
+            NodeOutputOp INTEGER DEFAULT NULL,
+            NodeRangeOp INTEGER DEFAULT NULL,
+            NodeIcon INTEGER DEFAULT NULL,
+            NodeIconColor INTEGER DEFAULT NULL,
+            NodeHidden INTEGER DEFAULT NULL,
+            NodeInstalledState INTEGER DEFAULT NULL,
+            NodeInstalledVersion INTEGER DEFAULT NULL,
+            NodeNextUuid BLOB DEFAULT NULL,
+            NodeFirstChildUuid BLOB DEFAULT NULL,
+            NodeSelectedUuid BLOB DEFAULT NULL,
+            NodeVariantID INTEGER DEFAULT NULL,
+            NodeInitVariantID INTEGER DEFAULT NULL,
+            NodeCustomIcon NULL DEFAULT NULL
         );
         
-        CREATE TABLE MaterialFile (
-            MaterialID BLOB PRIMARY KEY,
-            ToolID BLOB NOT NULL,
-            MaterialType INTEGER NOT NULL DEFAULT 1,
-            MaterialData BLOB NOT NULL,
-            MaterialWidth INTEGER,
-            MaterialHeight INTEGER,
-            CreateDate INTEGER NOT NULL,
-            ModifyDate INTEGER NOT NULL,
-            FOREIGN KEY(ToolID) REFERENCES ToolInfo(ToolID) ON DELETE CASCADE
+        CREATE TABLE Variant(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            VariantID INTEGER DEFAULT NULL,
+            VariantShowSeparator INTEGER DEFAULT NULL,
+            VariantShowParam BLOB DEFAULT NULL,
+            Opacity INTEGER DEFAULT NULL,
+            AntiAlias INTEGER DEFAULT NULL,
+            CompositeMode INTEGER DEFAULT NULL,
+            BrushSize REAL DEFAULT NULL,
+            BrushSizeUnit INTEGER DEFAULT NULL,
+            BrushSizeEffector BLOB DEFAULT NULL,
+            BrushFlow INTEGER DEFAULT NULL,
+            BrushFlowEffector BLOB DEFAULT NULL,
+            BrushHardness INTEGER DEFAULT NULL,
+            BrushInterval REAL DEFAULT NULL,
+            BrushIntervalEffector BLOB DEFAULT NULL,
+            BrushThickness INTEGER DEFAULT NULL,
+            BrushThicknessEffector BLOB DEFAULT NULL,
+            BrushRotation REAL DEFAULT NULL,
+            BrushRotationEffector INTEGER DEFAULT NULL,
+            BrushUsePatternImage INTEGER DEFAULT NULL,
+            BrushPatternImageArray BLOB DEFAULT NULL,
+            BrushPatternOrderType INTEGER DEFAULT NULL,
+            TextureImage NULL DEFAULT NULL,
+            TextureCompositeMode INTEGER DEFAULT NULL,
+            TextureDensity INTEGER DEFAULT NULL,
+            TextureDensityEffector BLOB DEFAULT NULL,
+            BrushMixColor INTEGER DEFAULT NULL,
+            BrushMixColorEffector BLOB DEFAULT NULL,
+            BrushBlur REAL DEFAULT NULL,
+            BrushBlurEffector BLOB DEFAULT NULL,
+            BrushUseSpray INTEGER DEFAULT NULL,
+            BrushSprayDensity INTEGER DEFAULT NULL,
+            BrushSprayDensityEffector BLOB DEFAULT NULL
         );
         
-        CREATE TABLE BrushParameter (
-            ParamID INTEGER PRIMARY KEY AUTOINCREMENT,
-            ToolID BLOB NOT NULL,
-            ParamName TEXT NOT NULL,
-            ParamValue BLOB NOT NULL,
-            ParamType INTEGER NOT NULL DEFAULT 1,
-            CreateDate INTEGER NOT NULL,
-            ModifyDate INTEGER NOT NULL,
-            FOREIGN KEY(ToolID) REFERENCES ToolInfo(ToolID) ON DELETE CASCADE
+        CREATE TABLE MaterialFile(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            InstallFolder INTEGER DEFAULT NULL,
+            OriginalPath TEXT DEFAULT NULL,
+            OldMaterial INTEGER DEFAULT NULL,
+            FileData BLOB DEFAULT NULL,
+            CatalogPath TEXT DEFAULT NULL,
+            MaterialUuid TEXT DEFAULT NULL
         );
-        
-        CREATE TABLE PressureCurve (
-            CurveID INTEGER PRIMARY KEY AUTOINCREMENT,
-            ToolID BLOB NOT NULL,
-            CurveType INTEGER NOT NULL,
-            CurveData BLOB NOT NULL,
-            CreateDate INTEGER NOT NULL,
-            ModifyDate INTEGER NOT NULL,
-            FOREIGN KEY(ToolID) REFERENCES ToolInfo(ToolID) ON DELETE CASCADE
-        );
-        
-        CREATE INDEX idx_tool_parent ON ToolInfo(ParentToolID);
-        CREATE INDEX idx_material_tool ON MaterialFile(ToolID);
-        CREATE INDEX idx_param_tool ON BrushParameter(ToolID);
-        CREATE INDEX idx_curve_tool ON PressureCurve(ToolID);
-        CREATE UNIQUE INDEX idx_manager_root ON Manager(RootToolID);
         """
         
         self.cursor.executescript(schema)
     
     def _generate_uuid(self):
-        """Generate CSP-compatible UUID (16 bytes)"""
+        """Generate CSP-compatible UUID (16 bytes random)"""
         import random
         
-        # Timestamp in microseconds (8 bytes, little-endian)
-        timestamp = int(time.time() * 1000000)
-        timestamp_bytes = struct.pack('<Q', timestamp)
-        
-        # Random data (8 bytes)
-        random_bytes = bytes([random.randint(0, 255) for _ in range(8)])
-        
-        # Set high bit in last 4 bytes
-        random_bytes = random_bytes[:4] + bytes([random_bytes[4] | 0x80]) + random_bytes[5:]
-        
-        return timestamp_bytes + random_bytes
+        # CSP uses 16 bytes of random data (no timestamp)
+        return bytes([random.randint(0, 255) for _ in range(16)])
     
     def _get_timestamp(self):
         """Get current timestamp in microseconds"""
         return int(time.time() * 1000000)
     
-    def _insert_manager(self, root_tool_id):
-        """Insert manager record"""
-        now = self._get_timestamp()
+    def _insert_manager(self, root_uuid):
+        """Insert Manager record with correct CSP format"""
         self.cursor.execute(
-            "INSERT INTO Manager (_id, Version, RootToolID, CreateDate, ModifyDate) VALUES (?, ?, ?, ?, ?)",
-            (1, 1, root_tool_id, now, now)
+            "INSERT INTO Manager (ToolType, Version, RootUuid, MaxVariantID, SavedCount) VALUES (?, ?, ?, ?, ?)",
+            (0, 126, root_uuid, 1000, 0)
         )
     
-    def _insert_root_tool(self, root_tool_id, package_name):
-        """Insert root tool record"""
-        now = self._get_timestamp()
+    def _insert_root_node(self, root_uuid, package_name):
+        """Insert root Node record"""
         self.cursor.execute(
-            "INSERT INTO ToolInfo (ToolID, ParentToolID, ToolName, ToolType, ToolClass, ToolCategory, CreateDate, ModifyDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (root_tool_id, None, package_name, 2, 0, 10, now, now)
+            "INSERT INTO Node (NodeUuid, NodeName, NodeLock, NodeHidden, NodeFirstChildUuid) VALUES (?, ?, ?, ?, ?)",
+            (root_uuid, package_name, 0, 0, None)
         )
     
-    def _insert_brush(self, brush, parent_tool_id, settings):
-        """Insert brush with all related data"""
-        now = self._get_timestamp()
+    def _insert_brush(self, brush, variant_id, prev_node_uuid=None, settings=None):
+        """Insert brush with correct CSP structure"""
+        # Generate UUID for this brush node
+        node_uuid = self._generate_uuid()
         
-        # Generate IDs
-        tool_id = self._generate_uuid()
-        material_id = self._generate_uuid()
+        # Generate material UUID if brush has image data
+        material_uuid = self._generate_material_uuid() if brush.get('image_data') else None
         
-        # Insert tool info
+        # Get settings with defaults
+        if not settings:
+            settings = {}
+        
+        # Default pressure curve (linear)
+        default_curve = [(0.0, 0.0), (1.0, 1.0)]
+        
+        # Insert Variant record (brush settings)
         self.cursor.execute(
-            "INSERT INTO ToolInfo (ToolID, ParentToolID, ToolName, ToolType, ToolClass, ToolCategory, CreateDate, ModifyDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (tool_id, parent_tool_id, brush['name'], 2, 0, 10, now, now)
+            """INSERT INTO Variant (
+                VariantID, Opacity, AntiAlias, CompositeMode,
+                BrushSize, BrushSizeUnit, BrushSizeEffector,
+                BrushFlow, BrushFlowEffector,
+                BrushHardness, BrushInterval,
+                BrushThickness, BrushRotation,
+                BrushUsePatternImage, BrushPatternImageArray
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                variant_id,
+                settings.get('opacity', 100),
+                1,  # AntiAlias enabled
+                0,  # CompositeMode: normal
+                float(settings.get('size', 50)),
+                0,  # BrushSizeUnit: pixels
+                self._encode_effector_blob(settings.get('sizePressure', False), default_curve),
+                settings.get('opacity', 100),
+                self._encode_effector_blob(settings.get('opacityPressure', False), default_curve),
+                settings.get('hardness', 50),
+                float(settings.get('spacing', 10)),
+                100,  # BrushThickness
+                float(settings.get('angle', 0)),
+                1 if material_uuid else 0,  # BrushUsePatternImage
+                self._encode_brush_pattern_array(brush['name'], material_uuid)
+            )
         )
         
-        # Insert material file (brush tip image)
+        # Insert Node record (tool hierarchy)
         self.cursor.execute(
-            "INSERT INTO MaterialFile (MaterialID, ToolID, MaterialType, MaterialData, MaterialWidth, MaterialHeight, CreateDate, ModifyDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (material_id, tool_id, 1, brush['image_data'], brush['width'], brush['height'], now, now)
+            """INSERT INTO Node (
+                NodeUuid, NodeName, NodeLock, NodeHidden,
+                NodeNextUuid, NodeVariantID, NodeInitVariantID
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                node_uuid,
+                brush['name'],
+                0,  # NodeLock: unlocked
+                0,  # NodeHidden: visible
+                None,  # NodeNextUuid: will be updated
+                variant_id,
+                variant_id
+            )
         )
         
-        # Insert brush parameters
-        default_params = {
-            'Size': settings.get('size', 50),
-            'Opacity': settings.get('opacity', 80),
-            'Spacing': settings.get('spacing', 10),
-            'Hardness': settings.get('hardness', 50),
-            'Angle': settings.get('angle', 0),
-            'Density': settings.get('density', 100)
-        }
-        
-        for param_name, param_value in default_params.items():
-            param_blob = self._encode_parameter(param_name, param_value, 1)  # Type 1 = integer
+        # Link previous node to this one
+        if prev_node_uuid:
             self.cursor.execute(
-                "INSERT INTO BrushParameter (ToolID, ParamName, ParamValue, ParamType, CreateDate, ModifyDate) VALUES (?, ?, ?, ?, ?, ?)",
-                (tool_id, param_name, param_blob, 1, now, now)
+                "UPDATE Node SET NodeNextUuid = ? WHERE NodeUuid = ?",
+                (node_uuid, prev_node_uuid)
             )
         
-        # Insert pressure curves (default linear curves)
-        for curve_type in [1, 2, 3]:  # Size, Opacity, Density
-            curve_data = self._encode_pressure_curve([(0.0, 0.0), (1.0, 1.0)])
-            self.cursor.execute(
-                "INSERT INTO PressureCurve (ToolID, CurveType, CurveData, CreateDate, ModifyDate) VALUES (?, ?, ?, ?, ?)",
-                (tool_id, curve_type, curve_data, now, now)
-            )
+        return node_uuid
     
-    def _encode_parameter(self, name, value, param_type):
-        """Encode brush parameter in CSP binary format"""
-        # Name (32 bytes, null-padded)
-        name_bytes = name.encode('utf-8')[:32].ljust(32, b'\x00')
+    def _encode_brush_pattern_array(self, brush_name='Brush', material_uuid=None):
+        """Encode BrushPatternImageArray with optional material reference"""
+        if not material_uuid:
+            # No material - return minimal header
+            return struct.pack('>IIII', 8, 1, 0, 0)  # Big-endian: header, count, length, unknown
         
-        # Value (16 bytes)
-        if param_type == 1:  # Integer
-            value_bytes = struct.pack('<i', int(value)).ljust(16, b'\x00')
-        elif param_type == 2:  # Float
-            value_bytes = struct.pack('<f', float(value)).ljust(16, b'\x00')
-        elif param_type == 3:  # Boolean
-            value_bytes = struct.pack('<B', 1 if value else 0).ljust(16, b'\x00')
-        else:
-            value_bytes = b'\x00' * 16
+        # Create material reference string
+        ref_string = f".:12:45:{material_uuid}:data:material_0.layer"
         
-        # Type (4 bytes)
-        type_bytes = struct.pack('<I', param_type)
+        # Encode as UTF-16LE
+        utf16_data = ref_string.encode('utf-16le') + b'\x00\x00'  # Add null terminator
         
-        return name_bytes + value_bytes + type_bytes
+        # Additional data
+        additional_data = struct.pack('<II', 0x00000200, 0x00000014)
+        
+        # Encode brush name as UTF-16LE
+        name_data = brush_name.encode('utf-16le') + b'\x00\x00'
+        
+        # Calculate data length
+        data_length = len(utf16_data) + len(additional_data) + len(name_data) + 8
+        
+        # Build header (big-endian)
+        header = struct.pack('>IIII', 8, 1, data_length, 132)
+        
+        # Combine all parts
+        return header + utf16_data + additional_data + name_data
     
-    def _encode_pressure_curve(self, points):
-        """Encode pressure curve in CSP binary format"""
-        # Magic bytes 'CSPR'
-        magic = b'CSPR'
+    def _encode_effector_blob(self, enabled, curve_points=None):
+        """Encode effector BLOB for pressure sensitivity"""
+        if not enabled or not curve_points:
+            return None
         
-        # Point count (4 bytes, little-endian)
-        count = struct.pack('<I', len(points))
+        # CSP effector format (simplified)
+        header = struct.pack('<II', 1, 0)  # Enabled, type/mode
         
-        # Point data (float32 pairs)
-        point_data = b''
+        # Limit to 10 points
+        points = curve_points[:10] if len(curve_points) > 10 else curve_points
+        point_count = len(points)
+        
+        # Encode curve points as float pairs
+        curve_data = struct.pack('<I', point_count)  # Point count
         for x, y in points:
-            point_data += struct.pack('<ff', float(x), float(y))
+            curve_data += struct.pack('<ff', float(x), float(y))
         
-        return magic + count + point_data
+        return header + curve_data
+    
+    def _generate_material_uuid(self):
+        """Generate a simple UUID string for material references"""
+        import random
+        chars = '0123456789abcdef'
+        uuid_parts = [
+            ''.join(random.choice(chars) for _ in range(8)),
+            ''.join(random.choice(chars) for _ in range(4)),
+            ''.join(random.choice(chars) for _ in range(4)),
+            ''.join(random.choice(chars) for _ in range(4)),
+            ''.join(random.choice(chars) for _ in range(12))
+        ]
+        return '-'.join(uuid_parts)
 
 
 if __name__ == '__main__':
