@@ -3079,6 +3079,29 @@ const BrushFixer = {
         results.innerHTML = '<strong>🔍 Scanning for issues...</strong><br><br>';
         
         try {
+            // Run CSP schema validation first
+            results.innerHTML += '<strong>Running CSP Schema Validation...</strong><br>';
+            const schemaValidation = await CSPSchemaValidator.fullValidation(this.currentDb);
+            
+            // Process schema validation results
+            let schemaIssues = 0;
+            schemaValidation.forEach(item => {
+                if (item.status === 'fail') {
+                    schemaIssues++;
+                    this.issues.push({
+                        type: 'schema_validation',
+                        severity: 'high',
+                        category: item.category,
+                        description: item.message
+                    });
+                    results.innerHTML += `❌ ${item.category}: ${item.message}<br>`;
+                } else {
+                    results.innerHTML += `✅ ${item.category}<br>`;
+                }
+            });
+            
+            results.innerHTML += '<br><strong>Running Detailed Checks...</strong><br>';
+            
             // Check 1: Missing duplicate variants
             await this.checkDuplicateVariants(results);
             
@@ -3093,6 +3116,12 @@ const BrushFixer = {
             
             // Check 5: Orphaned records
             await this.checkOrphanedRecords(results);
+            
+            // Check 6: Missing tables
+            await this.checkMissingTables(results);
+            
+            // Check 7: Missing columns
+            await this.checkMissingColumns(results);
             
             // Summary
             if (this.issues.length === 0) {
@@ -3451,6 +3480,176 @@ const BrushFixer = {
                 WHERE n.NodeVariantID = Variant.VariantID OR n.NodeInitVariantID = Variant.VariantID
             )
         `);
+    },
+    
+    async checkMissingTables(results) {
+        try {
+            const requiredTables = CSPSchema.getRequiredTables();
+            const missingTables = [];
+            
+            for (const tableName of requiredTables) {
+                const stmt = this.currentDb.prepare(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+                );
+                stmt.bind([tableName]);
+                const exists = stmt.step();
+                stmt.free();
+                
+                if (!exists) {
+                    missingTables.push(tableName);
+                }
+            }
+            
+            if (missingTables.length > 0) {
+                this.issues.push({
+                    type: 'missing_tables',
+                    severity: 'critical',
+                    tables: missingTables,
+                    description: `Missing required tables: ${missingTables.join(', ')}`
+                });
+                results.innerHTML += `❌ <strong>Missing Tables:</strong> ${missingTables.join(', ')}<br>`;
+            } else {
+                results.innerHTML += `✅ All required tables present<br>`;
+            }
+        } catch (error) {
+            results.innerHTML += `⚠️ Could not check tables: ${error.message}<br>`;
+        }
+    },
+    
+    async checkMissingColumns(results) {
+        try {
+            const requiredColumns = CSPSchema.getRequiredColumns();
+            const missingColumns = [];
+            
+            for (const [tableName, columns] of Object.entries(requiredColumns)) {
+                // Check if table exists first
+                const tableCheck = this.currentDb.prepare(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+                );
+                tableCheck.bind([tableName]);
+                const tableExists = tableCheck.step();
+                tableCheck.free();
+                
+                if (!tableExists) {
+                    continue; // Skip if table doesn't exist (handled by checkMissingTables)
+                }
+                
+                // Get existing columns
+                const schema = this.currentDb.prepare(`PRAGMA table_info(${tableName})`);
+                const existingCols = new Set();
+                
+                while (schema.step()) {
+                    const col = schema.get();
+                    existingCols.add(col[1]);
+                }
+                schema.free();
+                
+                // Check for missing columns
+                for (const colName of columns) {
+                    if (!existingCols.has(colName)) {
+                        missingColumns.push(`${tableName}.${colName}`);
+                    }
+                }
+            }
+            
+            if (missingColumns.length > 0) {
+                this.issues.push({
+                    type: 'missing_columns',
+                    severity: 'high',
+                    columns: missingColumns,
+                    description: `Missing required columns: ${missingColumns.join(', ')}`
+                });
+                results.innerHTML += `❌ <strong>Missing Columns:</strong> ${missingColumns.length} column(s)<br>`;
+            } else {
+                results.innerHTML += `✅ All required columns present<br>`;
+            }
+        } catch (error) {
+            results.innerHTML += `⚠️ Could not check columns: ${error.message}<br>`;
+        }
+    },
+    
+    fixMissingTables() {
+        // Create missing tables with correct schema
+        const requiredTables = CSPSchema.getRequiredTables();
+        
+        for (const tableName of requiredTables) {
+            const stmt = this.currentDb.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+            );
+            stmt.bind([tableName]);
+            const exists = stmt.step();
+            stmt.free();
+            
+            if (!exists) {
+                // Extract table creation SQL from schema
+                const schemaLines = CSPSchema.FULL_SCHEMA.split('\n');
+                let inTable = false;
+                let createSQL = '';
+                
+                for (const line of schemaLines) {
+                    if (line.includes(`CREATE TABLE ${tableName}`)) {
+                        inTable = true;
+                    }
+                    if (inTable) {
+                        createSQL += line + '\n';
+                        if (line.includes(');')) {
+                            break;
+                        }
+                    }
+                }
+                
+                if (createSQL) {
+                    this.currentDb.run(createSQL);
+                    Logger.success(`Created missing table: ${tableName}`);
+                }
+            }
+        }
+    },
+    
+    fixMissingColumns() {
+        // Note: Adding columns to existing tables is complex
+        // For now, log that this requires manual intervention or database rebuild
+        Logger.warning('Missing columns detected - file may need to be rebuilt from scratch');
+        
+        // We can add simple columns with ALTER TABLE
+        const requiredColumns = CSPSchema.getRequiredColumns();
+        
+        for (const [tableName, columns] of Object.entries(requiredColumns)) {
+            // Check if table exists
+            const tableCheck = this.currentDb.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+            );
+            tableCheck.bind([tableName]);
+            const tableExists = tableCheck.step();
+            tableCheck.free();
+            
+            if (!tableExists) {
+                continue;
+            }
+            
+            // Get existing columns
+            const schema = this.currentDb.prepare(`PRAGMA table_info(${tableName})`);
+            const existingCols = new Set();
+            
+            while (schema.step()) {
+                const col = schema.get();
+                existingCols.add(col[1]);
+            }
+            schema.free();
+            
+            // Try to add missing columns
+            for (const colName of columns) {
+                if (!existingCols.has(colName)) {
+                    try {
+                        // Add column with NULL default
+                        this.currentDb.run(`ALTER TABLE ${tableName} ADD COLUMN ${colName} DEFAULT NULL`);
+                        Logger.success(`Added missing column: ${tableName}.${colName}`);
+                    } catch (error) {
+                        Logger.warning(`Could not add column ${tableName}.${colName}: ${error.message}`);
+                    }
+                }
+            }
+        }
     }
 };
 
