@@ -1,0 +1,109 @@
+
+/* Server status indicator */
+.mode-btn.server-available {
+    border-color: #10b981;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.2) 100%);
+    transform: scale(1.02);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.mode-btn.server-available i {
+    color: #10b981 !important;
+}
+
+/* Enhanced file badges for server compatibility */
+.file-badge.bg-green-600 {
+    background: #10b981;
+}
+
+.file-badge.bg-blue-600 {
+    background: #3b82f6;
+}
+
+/* Server mode specific styles */
+.btn-python:not(:disabled) {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+}
+
+.btn-python:not(:disabled):hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.btn-python:disabled {
+    background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+    cursor: not-allowed;
+}
+
+/* Enhanced status messages */
+.status-bar.success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-bar.error {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-bar.warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* Loading overlay enhancement */
+#loadingOverlay {
+    backdrop-filter: blur(4px);
+}
+
+.loading-spinner {
+    border-width: 4px;
+    border-color: rgba(255, 255, 255, 0.1);
+    border-top-color: #a855f7;
+    animation: spin 1s linear infinite;
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.5);
+}
+
+/* Progress bar enhancement */
+.progress-container {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    overflow: hidden;
+    height: 8px;
+    margin: 10px 0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #a855f7, #ec4899);
+    transition: width 0.3s ease;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+}
+
+/* Tooltip enhancement */
+.brush-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.95);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 20;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+}
+
+.preview-item:hover .brush-tooltip {
+    opacity: 1;
+}
