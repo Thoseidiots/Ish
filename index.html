@@ -164,13 +164,13 @@ input[type=range]{width:100%;margin:10px 0}
 <div id="dropZone">
 <svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z"/></svg>
 <h2 style="color:#667eea;margin-bottom:10px">Drop Brush Files Here</h2>
-<p style="color:#6c757d;margin-bottom:20px">Supports: PNG, JPG, ABR, ZIP, .brushset files</p>
+<p style="color:#6c757d;margin-bottom:20px">Supports: PNG, JPG, ABR, ZIP, .brushset, .sut files</p>
 <div class="import-options">
 <button class="btn" id="importFilesBtn">📁 Import Brush Files</button>
 <button class="btn" id="importZipBtn">📦 Import ZIP/Brushset</button>
 <button class="btn btn-secondary" id="clearAllBtn">🗑️ Clear All</button>
 </div>
-<input type="file" id="fileInput" multiple accept=".png,.jpg,.jpeg,.abr,.zip,.brushset" style="display:none">
+<input type="file" id="fileInput" multiple accept=".png,.jpg,.jpeg,.abr,.zip,.brushset,.sut" style="display:none">
 <input type="file" id="zipInput" accept=".zip,.brushset" style="display:none">
 </div>
 
@@ -304,6 +304,13 @@ input[type=range]{width:100%;margin:10px 0}
 <input type="checkbox" id="useWebWorker" checked>
 <label for="useWebWorker">Use Web Worker (Large files)</label>
 </div>
+<div class="checkbox-group">
+<input type="checkbox" id="autoCorrectSettings" checked>
+<label for="autoCorrectSettings">Auto-Correct Settings from Metadata</label>
+</div>
+</div>
+<div class="info-banner" style="margin-top:15px;background:#e3f2fd;border-color:#2196f3;">
+<strong>ℹ️ Auto-Correction:</strong> When enabled, brush settings (size, opacity, hardness, etc.) are automatically extracted from file metadata (Procreate .brushset, Photoshop .abr) for 1:1 accuracy.
 </div>
 </div>
 </div>
@@ -369,7 +376,10 @@ input[type=range]{width:100%;margin:10px 0}
 <div id="fixerActions" style="display:none;margin-top:15px;">
 <h5>🛠️ Available Fixes</h5>
 <div id="fixerActionsList"></div>
-<button class="btn btn-success" id="applyFixes" style="margin-top:10px;" disabled>✅ Apply All Fixes & Download</button>
+<div style="display:flex;gap:10px;margin-top:10px;">
+<button class="btn btn-success" id="applyFixes" disabled>✅ Apply Fixes & Download</button>
+<button class="btn btn-secondary" id="useAsTemplate" disabled>📋 Use as Template</button>
+</div>
 </div>
 </div>
 </div>
@@ -1067,6 +1077,7 @@ const UI = {
         validationDetails: document.getElementById('validationDetails'),
         runDebugAnalysis: document.getElementById('runDebugAnalysis'),
         useWebWorker: document.getElementById('useWebWorker'),
+        autoCorrectSettings: document.getElementById('autoCorrectSettings'),
         schemaComparison: document.getElementById('schemaComparison'),
         schemaTable: document.getElementById('schemaTable'),
         pythonBanner: document.getElementById('pythonBanner'),
@@ -1076,7 +1087,8 @@ const UI = {
         fixerResults: document.getElementById('fixerResults'),
         fixerActions: document.getElementById('fixerActions'),
         fixerActionsList: document.getElementById('fixerActionsList'),
-        applyFixes: document.getElementById('applyFixes')
+        applyFixes: document.getElementById('applyFixes'),
+        useAsTemplate: document.getElementById('useAsTemplate')
     },
 
     init() {
@@ -1169,6 +1181,10 @@ const UI = {
         
         this.elements.applyFixes.addEventListener('click', () => {
             BrushFixer.applyFixesAndDownload();
+        });
+        
+        this.elements.useAsTemplate.addEventListener('click', () => {
+            BrushFixer.useAsTemplate();
         });
 
         // Event listeners
@@ -2608,7 +2624,7 @@ const FileManager = {
                 }
                 
                 const ext = file.name.toLowerCase().split('.').pop();
-                if (['png', 'jpg', 'jpeg', 'abr', 'zip', 'brushset'].includes(ext)) {
+                if (['png', 'jpg', 'jpeg', 'abr', 'zip', 'brushset', 'sut'].includes(ext)) {
                     validFiles.push(file);
                 } else {
                     Logger.warning(`Unsupported file type: ${file.name}`);
@@ -2629,6 +2645,30 @@ const FileManager = {
             const zipFiles = validFiles.filter(f => f.name.toLowerCase().endsWith('.zip') || f.name.toLowerCase().endsWith('.brushset'));
             const imageFiles = validFiles.filter(f => ['png', 'jpg', 'jpeg'].includes(f.name.toLowerCase().split('.').pop()));
             const abrFiles = validFiles.filter(f => f.name.toLowerCase().endsWith('.abr'));
+            const sutFiles = validFiles.filter(f => f.name.toLowerCase().endsWith('.sut'));
+            
+            // Handle .sut files separately - they're templates, not brushes
+            if (sutFiles.length > 0) {
+                Logger.info(`Found ${sutFiles.length} .sut file(s) - loading as template`);
+                
+                // Use the first .sut file as template
+                const sutFile = sutFiles[0];
+                await TemplateManager.loadTemplate(sutFile);
+                
+                if (sutFiles.length > 1) {
+                    Logger.warning(`Multiple .sut files detected - using ${sutFile.name} as template`);
+                }
+                
+                // Remove .sut files from validFiles so they're not processed as brushes
+                const nonSutFiles = validFiles.filter(f => !f.name.toLowerCase().endsWith('.sut'));
+                
+                if (nonSutFiles.length === 0) {
+                    Logger.info('Only .sut template loaded - ready to import brushes');
+                    UI.showStatus('Template loaded - drop brush files to convert', 'success');
+                    UI.showLoading(false);
+                    return;
+                }
+            }
             
             const allBrushes = [];
             
@@ -2650,6 +2690,11 @@ const FileManager = {
             for (const abrFile of abrFiles) {
                 const brushes = await this.processAbrFile(abrFile);
                 allBrushes.push(...brushes);
+            }
+            
+            // Auto-correct brush settings from metadata (if enabled)
+            if (allBrushes.length > 0 && UI.elements.autoCorrectSettings.checked) {
+                BrushSettingsAutoCorrector.correctAllBrushSettings(allBrushes);
             }
             
             AppState.brushes = allBrushes;
@@ -2842,6 +2887,7 @@ const FileManager = {
             const imageFiles = [];
             const abrFiles = [];
             const nestedZipFiles = [];
+            const jsonFiles = new Map();  // Map JSON files by base name
             
             zipData.forEach((relativePath, file) => {
                 if (file.dir) {
@@ -2852,6 +2898,10 @@ const FileManager = {
                 
                 if (['png', 'jpg', 'jpeg'].includes(ext)) {
                     imageFiles.push({ file, path: relativePath });
+                } else if (ext === 'json') {
+                    // Store JSON files for potential sidecar matching
+                    const baseName = relativePath.replace(/\.json$/i, '');
+                    jsonFiles.set(baseName, file);
                 } else if (ext === 'abr') {
                     abrFiles.push({ file, path: relativePath });
                 } else if (['zip', 'brushset'].includes(ext)) {
@@ -2875,6 +2925,22 @@ const FileManager = {
                             extractedFrom: zipFile.name,
                             originalPath: path
                         };
+                        
+                        // Check for JSON sidecar file
+                        const baseName = path.replace(/\.(png|jpg|jpeg)$/i, '');
+                        const jsonFile = jsonFiles.get(baseName);
+                        if (jsonFile) {
+                            try {
+                                const jsonBlob = await jsonFile.async('blob');
+                                const jsonText = await jsonBlob.text();
+                                const jsonData = JSON.parse(jsonText);
+                                brush.metadata.jsonData = jsonData;
+                                Logger.info(`Found JSON metadata for ${fileName}`);
+                            } catch (error) {
+                                Logger.warning(`Failed to parse JSON for ${fileName}: ${error.message}`);
+                            }
+                        }
+                        
                         brushes.push(brush);
                     }
                 } catch (error) {
@@ -3020,7 +3086,8 @@ const FileManager = {
                             originalFile: abrFile.name,
                             dateAdded: Date.now(),
                             fileSize: abrFile.size,
-                            roundness: brushData.roundness || 100
+                            roundness: brushData.roundness || 100,
+                            abrData: brushData  // Store full ABR data for auto-correction
                         }
                     });
                 }
@@ -3101,6 +3168,296 @@ const FileManager = {
 };
 
 // ============================================================================
+// BRUSH SETTINGS AUTO-CORRECTOR
+// ============================================================================
+const BrushSettingsAutoCorrector = {
+    
+    // Main entry point - corrects all brushes based on their metadata
+    correctAllBrushSettings(brushes) {
+        Logger.info('Auto-correcting brush settings from metadata...');
+        
+        let correctedCount = 0;
+        
+        for (const brush of brushes) {
+            if (this.correctBrushSettings(brush)) {
+                correctedCount++;
+            }
+        }
+        
+        if (correctedCount > 0) {
+            Logger.success(`Auto-corrected settings for ${correctedCount} brush(es)`);
+        }
+        
+        return correctedCount;
+    },
+    
+    // Corrects a single brush based on its metadata
+    correctBrushSettings(brush) {
+        if (!brush.metadata) {
+            return false;
+        }
+        
+        let corrected = false;
+        
+        // Check for Procreate metadata
+        if (brush.metadata.source === 'Procreate' && brush.metadata.procreateMetadata) {
+            corrected = this.applyProcreateSettings(brush, brush.metadata.procreateMetadata);
+        }
+        
+        // Check for ABR metadata
+        if (brush.type === 'abr' && brush.metadata.abrData) {
+            corrected = this.applyABRSettings(brush, brush.metadata.abrData) || corrected;
+        }
+        
+        // Check for generic JSON metadata
+        if (brush.metadata.jsonData) {
+            corrected = this.applyJSONSettings(brush, brush.metadata.jsonData) || corrected;
+        }
+        
+        return corrected;
+    },
+    
+    // Apply Procreate-specific settings
+    applyProcreateSettings(brush, metadata) {
+        let applied = false;
+        
+        // Size (Procreate uses 0-1 range, CSP uses pixels)
+        if (metadata.size !== undefined) {
+            brush.settings.size = this.normalizeProcreateSize(metadata.size);
+            applied = true;
+        }
+        
+        // Opacity (Procreate uses 0-1, CSP uses 0-100)
+        if (metadata.opacity !== undefined) {
+            brush.settings.opacity = Math.round(metadata.opacity * 100);
+            applied = true;
+        }
+        
+        // Spacing (Procreate uses 0-1, CSP uses percentage)
+        if (metadata.spacing !== undefined) {
+            brush.settings.spacing = Math.round(metadata.spacing * 100);
+            applied = true;
+        }
+        
+        // Hardness/Edge
+        if (metadata.hardness !== undefined) {
+            brush.settings.hardness = Math.round(metadata.hardness * 100);
+            applied = true;
+        } else if (metadata.edge !== undefined) {
+            // Procreate "edge" is inverse of hardness
+            brush.settings.hardness = Math.round((1 - metadata.edge) * 100);
+            applied = true;
+        }
+        
+        // Angle/Rotation
+        if (metadata.angle !== undefined) {
+            brush.settings.angle = metadata.angle;
+            applied = true;
+        } else if (metadata.rotation !== undefined) {
+            brush.settings.angle = metadata.rotation;
+            applied = true;
+        }
+        
+        // Pressure sensitivity
+        if (metadata.pressureSize !== undefined) {
+            brush.settings.sizePressure = metadata.pressureSize;
+            applied = true;
+        }
+        
+        if (metadata.pressureOpacity !== undefined) {
+            brush.settings.opacityPressure = metadata.pressureOpacity;
+            applied = true;
+        }
+        
+        // Blend mode
+        if (metadata.blendMode) {
+            brush.metadata.blendMode = metadata.blendMode;
+            applied = true;
+        }
+        
+        return applied;
+    },
+    
+    // Apply ABR (Photoshop) settings
+    applyABRSettings(brush, abrData) {
+        let applied = false;
+        
+        // Size (ABR stores in pixels)
+        if (abrData.diameter !== undefined) {
+            brush.settings.size = abrData.diameter;
+            applied = true;
+        } else if (abrData.size !== undefined) {
+            brush.settings.size = abrData.size;
+            applied = true;
+        }
+        
+        // Hardness (ABR uses 0-100)
+        if (abrData.hardness !== undefined) {
+            brush.settings.hardness = abrData.hardness;
+            applied = true;
+        }
+        
+        // Spacing (ABR uses percentage)
+        if (abrData.spacing !== undefined) {
+            brush.settings.spacing = abrData.spacing;
+            applied = true;
+        }
+        
+        // Angle
+        if (abrData.angle !== undefined) {
+            brush.settings.angle = abrData.angle;
+            applied = true;
+        }
+        
+        // Roundness (affects brush shape)
+        if (abrData.roundness !== undefined) {
+            brush.metadata.roundness = abrData.roundness;
+            applied = true;
+        }
+        
+        // Anti-aliasing
+        if (abrData.antiAliasing !== undefined) {
+            brush.settings.antiAliasing = abrData.antiAliasing;
+            applied = true;
+        }
+        
+        return applied;
+    },
+    
+    // Apply generic JSON settings
+    applyJSONSettings(brush, jsonData) {
+        let applied = false;
+        
+        // Try to map common property names
+        const sizeProps = ['size', 'diameter', 'width', 'brushSize'];
+        const opacityProps = ['opacity', 'alpha', 'flow'];
+        const hardnessProps = ['hardness', 'edge', 'softness'];
+        const spacingProps = ['spacing', 'interval', 'step'];
+        const angleProps = ['angle', 'rotation', 'direction'];
+        
+        // Size
+        for (const prop of sizeProps) {
+            if (jsonData[prop] !== undefined) {
+                brush.settings.size = this.normalizeValue(jsonData[prop], 1, 500);
+                applied = true;
+                break;
+            }
+        }
+        
+        // Opacity
+        for (const prop of opacityProps) {
+            if (jsonData[prop] !== undefined) {
+                brush.settings.opacity = this.normalizeValue(jsonData[prop], 0, 100);
+                applied = true;
+                break;
+            }
+        }
+        
+        // Hardness
+        for (const prop of hardnessProps) {
+            if (jsonData[prop] !== undefined) {
+                let value = jsonData[prop];
+                // If property is "softness" or "edge", invert it
+                if (prop === 'softness' || prop === 'edge') {
+                    value = 1 - value;
+                }
+                brush.settings.hardness = this.normalizeValue(value, 0, 100);
+                applied = true;
+                break;
+            }
+        }
+        
+        // Spacing
+        for (const prop of spacingProps) {
+            if (jsonData[prop] !== undefined) {
+                brush.settings.spacing = this.normalizeValue(jsonData[prop], 1, 100);
+                applied = true;
+                break;
+            }
+        }
+        
+        // Angle
+        for (const prop of angleProps) {
+            if (jsonData[prop] !== undefined) {
+                brush.settings.angle = this.normalizeValue(jsonData[prop], 0, 360);
+                applied = true;
+                break;
+            }
+        }
+        
+        return applied;
+    },
+    
+    // Normalize Procreate size (0-1 range) to CSP pixels
+    normalizeProcreateSize(procreateSize) {
+        // Procreate size 0-1 typically maps to 1-500 pixels in CSP
+        // Use a reasonable mapping curve
+        return Math.round(procreateSize * 200 + 10);
+    },
+    
+    // Normalize any value to a target range
+    normalizeValue(value, min, max) {
+        // If value is already in range, return it
+        if (value >= min && value <= max) {
+            return Math.round(value);
+        }
+        
+        // If value is 0-1 (normalized), scale to range
+        if (value >= 0 && value <= 1) {
+            return Math.round(value * (max - min) + min);
+        }
+        
+        // If value is percentage (0-100), scale to range
+        if (value >= 0 && value <= 100 && max !== 100) {
+            return Math.round((value / 100) * (max - min) + min);
+        }
+        
+        // Clamp to range
+        return Math.round(Math.max(min, Math.min(max, value)));
+    },
+    
+    // Extract JSON metadata from various sources
+    extractJSONMetadata(file, data) {
+        try {
+            // Try to parse as JSON
+            const text = typeof data === 'string' ? data : new TextDecoder().decode(data);
+            return JSON.parse(text);
+        } catch (error) {
+            // Not valid JSON
+            return null;
+        }
+    },
+    
+    // Parse embedded metadata from file names
+    parseFileNameMetadata(fileName) {
+        const metadata = {};
+        
+        // Look for patterns like "BrushName_size50_opacity80.png"
+        const sizeMatch = fileName.match(/size(\d+)/i);
+        if (sizeMatch) {
+            metadata.size = parseInt(sizeMatch[1]);
+        }
+        
+        const opacityMatch = fileName.match(/opacity(\d+)/i);
+        if (opacityMatch) {
+            metadata.opacity = parseInt(opacityMatch[1]);
+        }
+        
+        const hardnessMatch = fileName.match(/hardness(\d+)/i);
+        if (hardnessMatch) {
+            metadata.hardness = parseInt(hardnessMatch[1]);
+        }
+        
+        const spacingMatch = fileName.match(/spacing(\d+)/i);
+        if (spacingMatch) {
+            metadata.spacing = parseInt(spacingMatch[1]);
+        }
+        
+        return Object.keys(metadata).length > 0 ? metadata : null;
+    }
+};
+
+// ============================================================================
 // TEMPLATE MANAGER - CSP COMPATIBLE
 // ============================================================================
 const TemplateManager = {
@@ -3172,14 +3529,25 @@ const TemplateManager = {
             
             const hasErrors = validation.some(item => item.status === 'fail');
             if (hasErrors) {
-                Logger.warning('Template has validation issues - may not be fully CSP compatible');
-                UI.showValidationReport(validation);
+                Logger.warning('Template has validation issues - attempting automatic fix...');
+                
+                // Attempt to fix the template automatically
+                const fixResult = await this.autoFixTemplate(SUT_TEMPLATE, validation, file.name);
+                
+                if (fixResult.success) {
+                    Logger.success('Template automatically fixed and validated!');
+                    UI.showStatus(`Template fixed and loaded: ${file.name}`, 'success');
+                } else {
+                    Logger.warning('Template has remaining issues - may not be fully CSP compatible');
+                    UI.showValidationReport(validation);
+                    UI.showStatus(`Template loaded with warnings: ${file.name}`, 'warning');
+                }
             } else {
                 Logger.success('Template passed CSP validation');
+                UI.showStatus(`Template loaded: ${file.name}`, 'success');
             }
             
             AppState.templateLoaded = true;
-            UI.showStatus(`Template loaded: ${file.name}`, 'success');
             UI.elements.templateSelector.style.display = 'none';
             UI.hideInfo();
             
@@ -3190,6 +3558,87 @@ const TemplateManager = {
         } catch (error) {
             Logger.error(`Template loading error: ${error.message}`);
             UI.showStatus(`Template error: ${error.message}`, 'error');
+        }
+    },
+    
+    async autoFixTemplate(db, validation, fileName) {
+        try {
+            Logger.info('Analyzing template issues...');
+            
+            // Convert validation issues to fixable issues
+            const issues = [];
+            validation.forEach(item => {
+                if (item.status === 'fail') {
+                    if (item.message.includes('does not exist')) {
+                        issues.push({
+                            type: 'missing_tables',
+                            severity: 'high',
+                            tableName: item.tableName,
+                            description: item.message
+                        });
+                    } else if (item.message.includes('Missing column')) {
+                        issues.push({
+                            type: 'missing_columns',
+                            severity: 'high',
+                            tableName: item.tableName,
+                            columnName: item.columnName,
+                            description: item.message
+                        });
+                    }
+                }
+            });
+            
+            if (issues.length === 0) {
+                return { success: true, fixed: 0 };
+            }
+            
+            Logger.info(`Found ${issues.length} fixable issue(s), applying fixes...`);
+            
+            // Apply fixes using BrushFixer methods
+            let fixedCount = 0;
+            for (const issue of issues) {
+                try {
+                    if (issue.type === 'missing_tables') {
+                        const createStatement = CSPSchema.getTableCreateStatement(issue.tableName);
+                        if (createStatement) {
+                            db.run(createStatement);
+                            Logger.success(`✓ Created missing table: ${issue.tableName}`);
+                            fixedCount++;
+                        }
+                    } else if (issue.type === 'missing_columns') {
+                        const columnDef = CSPSchema.getColumnDefinition(issue.tableName, issue.columnName);
+                        if (columnDef) {
+                            db.run(`ALTER TABLE ${issue.tableName} ADD COLUMN ${columnDef}`);
+                            
+                            // Set default value if needed
+                            if (columnDef.includes('NOT NULL')) {
+                                const defaultValue = CSPSchema.getColumnDefault(issue.tableName, issue.columnName);
+                                if (defaultValue !== null) {
+                                    db.run(`UPDATE ${issue.tableName} SET ${issue.columnName} = ?`, [defaultValue]);
+                                }
+                            }
+                            Logger.success(`✓ Added missing column: ${issue.tableName}.${issue.columnName}`);
+                            fixedCount++;
+                        }
+                    }
+                } catch (error) {
+                    Logger.error(`Failed to fix ${issue.type}: ${error.message}`);
+                }
+            }
+            
+            // Re-validate after fixes
+            const postFixValidation = await CSPSchemaValidator.fullValidation(db);
+            const stillHasErrors = postFixValidation.some(item => item.status === 'fail');
+            
+            return {
+                success: !stillHasErrors,
+                fixed: fixedCount,
+                remaining: stillHasErrors ? postFixValidation.filter(item => item.status === 'fail').length : 0
+            };
+            
+        } catch (error) {
+            Logger.error(`Auto-fix failed: ${error.message}`);
+            return { success: false, fixed: 0, error: error.message };
         }
     }
 };
@@ -3521,6 +3970,69 @@ const BrushFixer = {
         
         UI.elements.fixerActions.style.display = 'block';
         UI.elements.applyFixes.disabled = false;
+        UI.elements.useAsTemplate.disabled = false;
+    },
+    
+    async useAsTemplate() {
+        if (!this.currentDb) {
+            UI.showStatus('No file loaded', 'error');
+            return;
+        }
+        
+        try {
+            Logger.info('Using fixed file as template...');
+            
+            // Apply all fixes first
+            const selectedFixes = this.issues.filter((issue, index) => {
+                const checkbox = document.getElementById(`fix_${index}`);
+                return checkbox && checkbox.checked;
+            });
+            
+            if (selectedFixes.length > 0) {
+                const orderedFixes = this.sortFixesByDependency(selectedFixes);
+                
+                for (const fix of orderedFixes) {
+                    this.applyFix(fix);
+                }
+                
+                Logger.success(`Applied ${selectedFixes.length} fix(es)`);
+            }
+            
+            // Validate the fixed database
+            const validation = await CSPSchemaValidator.fullValidation(this.currentDb);
+            const hasErrors = validation.some(item => item.status === 'fail');
+            
+            if (hasErrors) {
+                Logger.warning('Template still has validation issues');
+                UI.showStatus('Template has remaining issues - may not work correctly', 'warning');
+            } else {
+                Logger.success('Template validated successfully!');
+            }
+            
+            // Set as the active template
+            SUT_TEMPLATE = this.currentDb;
+            AppState.templateLoaded = true;
+            
+            // Hide template selector and enable conversion
+            UI.elements.templateSelector.style.display = 'none';
+            
+            if (AppState.filesLoaded) {
+                UI.enableConvertButton();
+            }
+            
+            Logger.success('Fixed file is now active as template!');
+            UI.showStatus('Template loaded and ready for conversion', 'success');
+            
+            // Switch to main tab
+            const mainTab = document.querySelector('[data-tab="main"]');
+            if (mainTab) {
+                mainTab.click();
+            }
+            
+        } catch (error) {
+            Logger.error(`Failed to use as template: ${error.message}`);
+            UI.showStatus(`Error: ${error.message}`, 'error');
+        }
     },
     
     async applyFixesAndDownload() {
