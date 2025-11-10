@@ -365,13 +365,13 @@ input[type=range]{width:100%;margin:10px 0}
 </div>
 
 <div class="debug-panel" style="margin-top:20px;">
-<h4>🔧 Brush File Fixer</h4>
-<p>Repair corrupted or incompatible .sut files automatically.</p>
+<h4>🔧 Brush File Fixer & Validator</h4>
+<p>Validate and repair brush files (.sut, .abr, .brushset) automatically.</p>
 <div class="control-group">
-<label for="fixerInput">Upload .sut file to fix</label>
-<input type="file" id="fixerInput" accept=".sut" style="display:block;margin-bottom:10px;">
+<label for="fixerInput">Upload brush file to validate/fix</label>
+<input type="file" id="fixerInput" accept=".sut,.abr,.brushset" style="display:block;margin-bottom:10px;">
 </div>
-<button class="btn btn-success" id="runBrushFixer" disabled>🔧 Scan & Fix Issues</button>
+<button class="btn btn-success" id="runBrushFixer" disabled>🔧 Scan & Validate</button>
 <div id="fixerResults" class="debug-info" style="display:none;margin-top:15px;"></div>
 <div id="fixerActions" style="display:none;margin-top:15px;">
 <h5>🛠️ Available Fixes</h5>
@@ -3684,27 +3684,55 @@ const TemplateManager = {
 const BrushFixer = {
     currentFile: null,
     currentDb: null,
+    currentFileType: null,
+    currentFileData: null,
     issues: [],
     validationReport: null,
     
     async loadFile(file) {
         try {
-            Logger.info(`Loading .sut file for analysis: ${file.name}`);
+            const ext = file.name.toLowerCase().split('.').pop();
+            Logger.info(`Loading ${ext.toUpperCase()} file for analysis: ${file.name}`);
             
             const arrayBuffer = await file.arrayBuffer();
             const u8Array = new Uint8Array(arrayBuffer);
             
-            // Validate SQLite header
-            const header = new TextDecoder().decode(u8Array.slice(0, 16));
-            if (!header.startsWith('SQLite format 3')) {
-                throw new Error('Invalid SUT file - not a valid SQLite database');
+            this.currentFile = file;
+            this.currentFileType = ext;
+            this.currentFileData = u8Array;
+            this.issues = [];
+            this.currentDb = null;
+            
+            // Handle different file types
+            if (ext === 'sut') {
+                // Validate SQLite header
+                const header = new TextDecoder().decode(u8Array.slice(0, 16));
+                if (!header.startsWith('SQLite format 3')) {
+                    throw new Error('Invalid SUT file - not a valid SQLite database');
+                }
+                this.currentDb = new SQL.Database(u8Array);
+                Logger.success(`SUT file loaded: ${file.name}`);
+            } else if (ext === 'abr') {
+                // Validate ABR header
+                if (u8Array.length < 4) {
+                    throw new Error('Invalid ABR file - file too small');
+                }
+                const version = (u8Array[0] << 8) | u8Array[1];
+                if (version < 1 || version > 10) {
+                    throw new Error('Invalid ABR file - unsupported version');
+                }
+                Logger.success(`ABR file loaded: ${file.name} (version ${version})`);
+            } else if (ext === 'brushset') {
+                // Validate ZIP header
+                const zipHeader = new TextDecoder().decode(u8Array.slice(0, 4));
+                if (!zipHeader.startsWith('PK')) {
+                    throw new Error('Invalid brushset file - not a valid ZIP archive');
+                }
+                Logger.success(`Brushset file loaded: ${file.name}`);
+            } else {
+                throw new Error(`Unsupported file type: ${ext}`);
             }
             
-            this.currentFile = file;
-            this.currentDb = new SQL.Database(u8Array);
-            this.issues = [];
-            
-            Logger.success(`File loaded: ${file.name}`);
             UI.showStatus(`File loaded: ${file.name}`, 'success');
             
         } catch (error) {
@@ -3715,7 +3743,7 @@ const BrushFixer = {
     },
     
     async scanAndFix() {
-        if (!this.currentDb) {
+        if (!this.currentFile) {
             UI.showStatus('No file loaded', 'error');
             return;
         }
@@ -3725,7 +3753,38 @@ const BrushFixer = {
         
         const results = UI.elements.fixerResults;
         results.style.display = 'block';
-        results.innerHTML = '<strong>🔍 Scanning for issues...</strong><br><br>';
+        results.innerHTML = `<strong>🔍 Scanning ${this.currentFileType.toUpperCase()} file...</strong><br><br>`;
+        
+        try {
+            // Route to appropriate validator based on file type
+            if (this.currentFileType === 'sut') {
+                await this.validateSUTFile(results);
+            } else if (this.currentFileType === 'abr') {
+                await this.validateABRFile(results);
+            } else if (this.currentFileType === 'brushset') {
+                await this.validateBrushsetFile(results);
+            }
+            
+            // Summary
+            if (this.issues.length === 0) {
+                results.innerHTML += '<br><strong style="color:#28a745;">✅ No issues found! File is valid.</strong>';
+                UI.elements.fixerActions.style.display = 'none';
+            } else {
+                results.innerHTML += `<br><strong style="color:#ffc107;">⚠️ Found ${this.issues.length} issue(s).</strong>`;
+                this.displayFixActions();
+            }
+            
+        } catch (error) {
+            results.innerHTML += `<br><strong style="color:#dc3545;">❌ Scan error: ${error.message}</strong>`;
+        } finally {
+            UI.showLoading(false);
+        }
+    },
+    
+    async validateSUTFile(results) {
+        if (!this.currentDb) {
+            throw new Error('No database loaded');
+        }
         
         try {
             // Run CSP schema validation first
@@ -3989,6 +4048,23 @@ const BrushFixer = {
     displayFixActions() {
         const actionsList = UI.elements.fixerActionsList;
         actionsList.innerHTML = '';
+        
+        // Check if file type supports fixing
+        const canFix = this.currentFileType === 'sut';
+        
+        if (!canFix) {
+            actionsList.innerHTML = `
+                <div style="padding:10px;background:#fff3cd;border:1px solid #ffc107;border-radius:4px;">
+                    <strong>ℹ️ Validation Only</strong><br>
+                    ${this.currentFileType.toUpperCase()} files cannot be automatically fixed.<br>
+                    This tool validates the file structure and reports issues for your review.
+                </div>
+            `;
+            UI.elements.fixerActions.style.display = 'block';
+            UI.elements.applyFixes.disabled = true;
+            UI.elements.useAsTemplate.disabled = true;
+            return;
+        }
         
         this.issues.forEach((issue, index) => {
             const item = document.createElement('div');
@@ -4433,6 +4509,140 @@ const BrushFixer = {
             }
         } catch (error) {
             results.innerHTML += `⚠️ Could not check columns: ${error.message}<br>`;
+        }
+    },
+    
+    async validateABRFile(results) {
+        try {
+            results.innerHTML += '<strong>Validating ABR File Structure...</strong><br>';
+            
+            const data = this.currentFileData;
+            
+            // Check version
+            const version = (data[0] << 8) | data[1];
+            results.innerHTML += `✅ ABR Version: ${version}<br>`;
+            
+            // Check brush count
+            const count = (data[2] << 8) | data[3];
+            results.innerHTML += `✅ Brush Count: ${count}<br>`;
+            
+            if (count < 1 || count > 1000) {
+                this.issues.push({
+                    type: 'abr_invalid_count',
+                    severity: 'high',
+                    description: `Invalid brush count: ${count} (expected 1-1000)`
+                });
+                results.innerHTML += `❌ <strong>Invalid Count:</strong> ${count} brushes (suspicious)<br>`;
+            }
+            
+            // Check file size
+            const expectedMinSize = count * 100; // Rough estimate
+            if (data.length < expectedMinSize) {
+                this.issues.push({
+                    type: 'abr_truncated',
+                    severity: 'high',
+                    description: `File may be truncated (${data.length} bytes for ${count} brushes)`
+                });
+                results.innerHTML += `⚠️ <strong>File Size:</strong> May be truncated<br>`;
+            } else {
+                results.innerHTML += `✅ File size appears valid<br>`;
+            }
+            
+            // Check for version 6+ signature
+            if (version >= 6) {
+                const signature = new TextDecoder().decode(data.slice(4, 8));
+                if (signature === '8BIM') {
+                    results.innerHTML += `✅ Version 6+ signature valid<br>`;
+                } else {
+                    this.issues.push({
+                        type: 'abr_invalid_signature',
+                        severity: 'medium',
+                        description: `Missing or invalid 8BIM signature for version ${version}`
+                    });
+                    results.innerHTML += `⚠️ <strong>Signature:</strong> Missing 8BIM marker<br>`;
+                }
+            }
+            
+            results.innerHTML += '<br><strong>ABR File Analysis Complete</strong><br>';
+            results.innerHTML += `<em>Note: ABR files cannot be automatically fixed. Use this tool to validate before conversion.</em><br>`;
+            
+        } catch (error) {
+            results.innerHTML += `❌ <strong>Validation Error:</strong> ${error.message}<br>`;
+        }
+    },
+    
+    async validateBrushsetFile(results) {
+        try {
+            results.innerHTML += '<strong>Validating Procreate Brushset...</strong><br>';
+            
+            const zip = new JSZip();
+            const zipData = await zip.loadAsync(this.currentFileData);
+            
+            // Count files
+            let pngCount = 0;
+            let jsonCount = 0;
+            let brushDirs = new Set();
+            
+            zipData.forEach((relativePath, file) => {
+                if (!file.dir) {
+                    const parts = relativePath.split('/');
+                    if (parts.length >= 2) {
+                        brushDirs.add(parts[0]);
+                    }
+                    
+                    if (relativePath.toLowerCase().endsWith('.png')) {
+                        pngCount++;
+                    } else if (relativePath.toLowerCase().endsWith('.json')) {
+                        jsonCount++;
+                    }
+                }
+            });
+            
+            results.innerHTML += `✅ Brush Directories: ${brushDirs.size}<br>`;
+            results.innerHTML += `✅ PNG Files: ${pngCount}<br>`;
+            results.innerHTML += `✅ JSON Files: ${jsonCount}<br>`;
+            
+            // Check for brush directories
+            if (brushDirs.size === 0) {
+                this.issues.push({
+                    type: 'brushset_no_brushes',
+                    severity: 'high',
+                    description: 'No brush directories found in brushset'
+                });
+                results.innerHTML += `❌ <strong>No Brushes:</strong> No brush directories found<br>`;
+            }
+            
+            // Check for PNG files
+            if (pngCount === 0) {
+                this.issues.push({
+                    type: 'brushset_no_images',
+                    severity: 'high',
+                    description: 'No PNG images found in brushset'
+                });
+                results.innerHTML += `❌ <strong>No Images:</strong> No PNG files found<br>`;
+            }
+            
+            // Check for parameter files
+            if (jsonCount === 0) {
+                this.issues.push({
+                    type: 'brushset_no_params',
+                    severity: 'medium',
+                    description: 'No JSON parameter files found (brushes will use defaults)'
+                });
+                results.innerHTML += `⚠️ <strong>No Parameters:</strong> No JSON files found (will use defaults)<br>`;
+            }
+            
+            // Check for Brushes.archive (legacy format)
+            const archiveFile = zipData.file('Brushes.archive');
+            if (archiveFile) {
+                results.innerHTML += `✅ Found Brushes.archive (legacy metadata)<br>`;
+            }
+            
+            results.innerHTML += '<br><strong>Brushset Analysis Complete</strong><br>';
+            results.innerHTML += `<em>Note: Brushset files cannot be automatically fixed. Use this tool to validate before conversion.</em><br>`;
+            
+        } catch (error) {
+            results.innerHTML += `❌ <strong>Validation Error:</strong> ${error.message}<br>`;
         }
     },
     
