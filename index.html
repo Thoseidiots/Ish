@@ -3100,6 +3100,7 @@ const Converter = {
                 // Generate UUIDs and IDs
                 const nodeUuid = CSPUUIDGenerator.generateUuidBlob();
                 const variantId = ++variantIdCounter;
+                const initVariantId = ++variantIdCounter;  // Separate ID for initial variant
                 
                 // Track first brush for root node
                 if (i === 0) {
@@ -3116,18 +3117,8 @@ const Converter = {
                 const opacityCurve = brush.settings.opacityPressure && PressureCurveUtils.curveData.opacity ? 
                     PressureCurveUtils.curveData.opacity.points : null;
                 
-                // Insert Variant record (brush settings)
-                db.run(`
-                    INSERT INTO Variant (
-                        VariantID, Opacity, AntiAlias, CompositeMode,
-                        BrushSize, BrushSizeUnit, BrushSizeEffector,
-                        BrushFlow, BrushFlowEffector,
-                        BrushHardness, BrushInterval,
-                        BrushThickness, BrushRotation,
-                        BrushUsePatternImage, BrushPatternImageArray
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `, [
-                    variantId,
+                // Prepare variant data
+                const variantData = [
                     brush.settings.opacity || 100,
                     brush.settings.antiAliasing ? 1 : 0,
                     0,  // CompositeMode: 0 = normal
@@ -3142,22 +3133,53 @@ const Converter = {
                     brush.settings.angle || 0.0,
                     materialUuid ? 1 : 0,  // BrushUsePatternImage: 1 if has tip
                     CSPEncodingUtils.encodeBrushPatternArray(brush.name, materialUuid)
-                ]);
+                ];
                 
-                // Insert Node record (tool hierarchy)
+                // Insert CURRENT Variant record
+                db.run(`
+                    INSERT INTO Variant (
+                        VariantID, Opacity, AntiAlias, CompositeMode,
+                        BrushSize, BrushSizeUnit, BrushSizeEffector,
+                        BrushFlow, BrushFlowEffector,
+                        BrushHardness, BrushInterval,
+                        BrushThickness, BrushRotation,
+                        BrushUsePatternImage, BrushPatternImageArray
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [variantId, ...variantData]);
+                
+                // Insert INITIAL Variant record (same settings)
+                db.run(`
+                    INSERT INTO Variant (
+                        VariantID, Opacity, AntiAlias, CompositeMode,
+                        BrushSize, BrushSizeUnit, BrushSizeEffector,
+                        BrushFlow, BrushFlowEffector,
+                        BrushHardness, BrushInterval,
+                        BrushThickness, BrushRotation,
+                        BrushUsePatternImage, BrushPatternImageArray
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [initVariantId, ...variantData]);
+                
+                // Insert Node record with proper default values
                 db.run(`
                     INSERT INTO Node (
                         NodeUuid, NodeName, NodeLock, NodeHidden,
+                        NodeInputOp, NodeOutputOp, NodeRangeOp,
+                        NodeIcon, NodeIconColor,
                         NodeNextUuid, NodeVariantID, NodeInitVariantID
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
                     nodeUuid,
                     brush.name,
                     0,  // NodeLock: 0 = unlocked
                     0,  // NodeHidden: 0 = visible
+                    10, // NodeInputOp: 10 (default)
+                    10, // NodeOutputOp: 10 (default)
+                    0,  // NodeRangeOp: 0 (default)
+                    128, // NodeIcon: 128 (default brush icon)
+                    0,  // NodeIconColor: 0 (default)
                     null,  // NodeNextUuid: will be updated for previous node
                     variantId,
-                    variantId
+                    initVariantId
                 ]);
                 
                 // Link previous node to this one
