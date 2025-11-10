@@ -1600,6 +1600,149 @@ const CSPSchema = {
     
     getRequiredIndexes() {
         return [];  // CSP doesn't use explicit indexes
+    },
+    
+    getTableCreateStatement(tableName) {
+        const statements = {
+            'Manager': `
+                CREATE TABLE Manager (
+                    _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ToolType INTEGER DEFAULT 0,
+                    Version INTEGER DEFAULT 126,
+                    RootUuid BLOB,
+                    MaxVariantID INTEGER DEFAULT 0,
+                    SavedCount INTEGER DEFAULT 0,
+                    CreateDate INTEGER,
+                    ModifyDate INTEGER
+                )
+            `,
+            'Node': `
+                CREATE TABLE Node (
+                    _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    NodeUuid BLOB,
+                    NodeName TEXT,
+                    NodeVariantID INTEGER,
+                    NodeInitVariantID INTEGER,
+                    NodeNextUuid BLOB,
+                    NodeFirstChildUuid BLOB,
+                    NodeInputOp INTEGER DEFAULT 10,
+                    NodeOutputOp INTEGER DEFAULT 10,
+                    NodeRangeOp INTEGER DEFAULT 0,
+                    NodeIcon INTEGER DEFAULT 128,
+                    NodeIconColor INTEGER DEFAULT 0
+                )
+            `,
+            'Variant': `
+                CREATE TABLE Variant (
+                    _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    VariantID INTEGER,
+                    Opacity INTEGER DEFAULT 100,
+                    BrushSize REAL DEFAULT 10.0,
+                    BrushSizeUnit INTEGER DEFAULT 0,
+                    BrushHardness INTEGER DEFAULT 100,
+                    BrushInterval REAL DEFAULT 0.1,
+                    BrushUsePatternImage INTEGER DEFAULT 0,
+                    BrushPatternImageArray BLOB,
+                    AntiAlias INTEGER DEFAULT 1,
+                    CompositeMode INTEGER DEFAULT 0
+                )
+            `,
+            'MaterialFile': `
+                CREATE TABLE MaterialFile (
+                    _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    MaterialID BLOB,
+                    FileData BLOB,
+                    Width INTEGER,
+                    Height INTEGER
+                )
+            `
+        };
+        
+        return statements[tableName] || null;
+    },
+    
+    getColumnDefinition(tableName, columnName) {
+        const definitions = {
+            'Manager': {
+                'ToolType': 'ToolType INTEGER DEFAULT 0',
+                'Version': 'Version INTEGER DEFAULT 126',
+                'RootUuid': 'RootUuid BLOB',
+                'MaxVariantID': 'MaxVariantID INTEGER DEFAULT 0',
+                'SavedCount': 'SavedCount INTEGER DEFAULT 0',
+                'CreateDate': 'CreateDate INTEGER',
+                'ModifyDate': 'ModifyDate INTEGER'
+            },
+            'Node': {
+                'NodeUuid': 'NodeUuid BLOB',
+                'NodeName': 'NodeName TEXT',
+                'NodeVariantID': 'NodeVariantID INTEGER',
+                'NodeInitVariantID': 'NodeInitVariantID INTEGER',
+                'NodeNextUuid': 'NodeNextUuid BLOB',
+                'NodeFirstChildUuid': 'NodeFirstChildUuid BLOB',
+                'NodeInputOp': 'NodeInputOp INTEGER DEFAULT 10',
+                'NodeOutputOp': 'NodeOutputOp INTEGER DEFAULT 10',
+                'NodeRangeOp': 'NodeRangeOp INTEGER DEFAULT 0',
+                'NodeIcon': 'NodeIcon INTEGER DEFAULT 128',
+                'NodeIconColor': 'NodeIconColor INTEGER DEFAULT 0'
+            },
+            'Variant': {
+                'VariantID': 'VariantID INTEGER',
+                'Opacity': 'Opacity INTEGER DEFAULT 100',
+                'BrushSize': 'BrushSize REAL DEFAULT 10.0',
+                'BrushSizeUnit': 'BrushSizeUnit INTEGER DEFAULT 0',
+                'BrushHardness': 'BrushHardness INTEGER DEFAULT 100',
+                'BrushInterval': 'BrushInterval REAL DEFAULT 0.1',
+                'BrushUsePatternImage': 'BrushUsePatternImage INTEGER DEFAULT 0',
+                'BrushPatternImageArray': 'BrushPatternImageArray BLOB',
+                'AntiAlias': 'AntiAlias INTEGER DEFAULT 1',
+                'CompositeMode': 'CompositeMode INTEGER DEFAULT 0'
+            },
+            'MaterialFile': {
+                'MaterialID': 'MaterialID BLOB',
+                'FileData': 'FileData BLOB',
+                'Width': 'Width INTEGER',
+                'Height': 'Height INTEGER'
+            }
+        };
+        
+        return definitions[tableName]?.[columnName] || null;
+    },
+    
+    getColumnDefault(tableName, columnName) {
+        const defaults = {
+            'Manager': {
+                'ToolType': 0,
+                'Version': 126,
+                'MaxVariantID': 0,
+                'SavedCount': 0,
+                'CreateDate': Date.now(),
+                'ModifyDate': Date.now()
+            },
+            'Node': {
+                'NodeInputOp': 10,
+                'NodeOutputOp': 10,
+                'NodeRangeOp': 0,
+                'NodeIcon': 128,
+                'NodeIconColor': 0
+            },
+            'Variant': {
+                'VariantID': 1,
+                'Opacity': 100,
+                'BrushSize': 10.0,
+                'BrushSizeUnit': 0,
+                'BrushHardness': 100,
+                'BrushInterval': 0.1,
+                'BrushUsePatternImage': 0,
+                'AntiAlias': 1,
+                'CompositeMode': 0
+            },
+            'MaterialFile': {
+                'Width': 0,
+                'Height': 0
+            }
+        };
+        
+        return defaults[tableName]?.[columnName] || null;
     }
 };
 
@@ -1971,7 +2114,11 @@ const CSPSchemaValidator = {
             tableCheck.free();
             
             if (!tableExists) {
-                return { valid: false, error: `Table ${tableName} does not exist` };
+                return { 
+                    valid: false, 
+                    error: `Table ${tableName} does not exist`,
+                    tableName: tableName
+                };
             }
             
             // Get table schema
@@ -1992,14 +2139,52 @@ const CSPSchemaValidator = {
             // Validate required columns
             for (const colInfo of tableInfo.requiredColumns) {
                 if (!existingColumns[colInfo.name]) {
-                    return { valid: false, error: `Missing column ${colInfo.name}` };
+                    return { 
+                        valid: false, 
+                        error: `Missing column ${colInfo.name}`,
+                        tableName: tableName,
+                        columnName: colInfo.name
+                    };
                 }
             }
             
             return { valid: true };
             
         } catch (error) {
-            return { valid: false, error: error.message };
+            return { 
+                valid: false, 
+                error: error.message,
+                tableName: tableName
+            };
+        }
+    },
+    
+    async validateIntegrity(db) {
+        try {
+            const integrity = db.prepare("PRAGMA integrity_check");
+            integrity.step();
+            const result = integrity.get();
+            integrity.free();
+            
+            if (result[0] === 'ok') {
+                return {
+                    category: 'Database Integrity',
+                    status: 'pass',
+                    message: 'Database integrity check passed'
+                };
+            } else {
+                return {
+                    category: 'Database Integrity',
+                    status: 'fail',
+                    message: `Integrity check failed: ${result[0]}`
+                };
+            }
+        } catch (error) {
+            return {
+                category: 'Database Integrity',
+                status: 'fail',
+                message: `Integrity check error: ${error.message}`
+            };
         }
     },
     
@@ -2015,44 +2200,23 @@ const CSPSchemaValidator = {
                 report.push({
                     category: `Table ${tableName}`,
                     status: 'pass',
-                    message: 'All required columns present and correctly configured'
+                    message: 'All required columns present and correctly configured',
+                    tableName: tableName
                 });
             } else {
                 report.push({
                     category: `Table ${tableName}`,
                     status: 'fail',
-                    message: validation.error
+                    message: validation.error,
+                    tableName: validation.tableName,
+                    columnName: validation.columnName || null
                 });
             }
         }
         
-        // Check database settings
-        try {
-            const integrity = db.prepare("PRAGMA integrity_check");
-            integrity.step();
-            const result = integrity.get();
-            integrity.free();
-            
-            if (result[0] === 'ok') {
-                report.push({
-                    category: 'Database Integrity',
-                    status: 'pass',
-                    message: 'Database integrity check passed'
-                });
-            } else {
-                report.push({
-                    category: 'Database Integrity',
-                    status: 'fail',
-                    message: `Integrity check failed: ${result[0]}`
-                });
-            }
-        } catch (error) {
-            report.push({
-                category: 'Database Integrity',
-                status: 'fail',
-                message: `Cannot check integrity: ${error.message}`
-            });
-        }
+        // Check database integrity
+        const integrityCheck = await this.validateIntegrity(db);
+        report.push(integrityCheck);
         
         return report;
     }
@@ -3037,6 +3201,7 @@ const BrushFixer = {
     currentFile: null,
     currentDb: null,
     issues: [],
+    validationReport: null,
     
     async loadFile(file) {
         try {
@@ -3082,23 +3247,10 @@ const BrushFixer = {
             // Run CSP schema validation first
             results.innerHTML += '<strong>Running CSP Schema Validation...</strong><br>';
             const schemaValidation = await CSPSchemaValidator.fullValidation(this.currentDb);
+            this.validationReport = schemaValidation;
             
-            // Process schema validation results
-            let schemaIssues = 0;
-            schemaValidation.forEach(item => {
-                if (item.status === 'fail') {
-                    schemaIssues++;
-                    this.issues.push({
-                        type: 'schema_validation',
-                        severity: 'high',
-                        category: item.category,
-                        description: item.message
-                    });
-                    results.innerHTML += `❌ ${item.category}: ${item.message}<br>`;
-                } else {
-                    results.innerHTML += `✅ ${item.category}<br>`;
-                }
-            });
+            // Convert schema validation results to fixable issues
+            this.convertSchemaIssuesToFixes(schemaValidation, results);
             
             results.innerHTML += '<br><strong>Running Detailed Checks...</strong><br>';
             
@@ -3137,6 +3289,60 @@ const BrushFixer = {
         } finally {
             UI.showLoading(false);
         }
+    },
+    
+    convertSchemaIssuesToFixes(schemaValidation, results) {
+        schemaValidation.forEach(item => {
+            if (item.status === 'fail') {
+                const issue = this.createFixableIssue(item);
+                if (issue) {
+                    this.issues.push(issue);
+                }
+                results.innerHTML += `❌ ${item.category}: ${item.message}<br>`;
+            } else {
+                results.innerHTML += `✅ ${item.category}<br>`;
+            }
+        });
+    },
+    
+    createFixableIssue(validationItem) {
+        // Parse validation message to determine issue type
+        if (validationItem.message.includes('does not exist')) {
+            return {
+                type: 'missing_tables',
+                severity: 'high',
+                category: validationItem.category,
+                description: validationItem.message,
+                tableName: validationItem.tableName
+            };
+        } else if (validationItem.message.includes('Missing column')) {
+            return {
+                type: 'missing_columns',
+                severity: 'high',
+                category: validationItem.category,
+                description: validationItem.message,
+                tableName: validationItem.tableName,
+                columnName: validationItem.columnName
+            };
+        } else if (validationItem.message.includes('Integrity check failed')) {
+            return {
+                type: 'integrity_check',
+                severity: 'high',
+                category: validationItem.category,
+                description: validationItem.message
+            };
+        }
+        return null;
+    },
+    
+    extractTableName(text) {
+        const match = text.match(/Table (\w+)/);
+        return match ? match[1] : null;
+    },
+    
+    extractColumnName(text) {
+        const match = text.match(/column (\w+)/);
+        return match ? match[1] : null;
     },
     
     async checkDuplicateVariants(results) {
@@ -3327,21 +3533,38 @@ const BrushFixer = {
         try {
             Logger.info('Applying fixes...');
             
-            // Apply each selected fix
+            // Get selected fixes
+            const selectedFixes = [];
             this.issues.forEach((issue, index) => {
                 const checkbox = document.getElementById(`fix_${index}`);
                 if (checkbox && checkbox.checked) {
-                    this.applyFix(issue);
+                    selectedFixes.push(issue);
                 }
             });
+            
+            // Sort fixes by dependency order
+            const orderedFixes = this.sortFixesByDependency(selectedFixes);
+            
+            // Apply each fix in order
+            for (const fix of orderedFixes) {
+                this.applyFix(fix);
+            }
+            
+            // Re-validate after fixes
+            const postFixValidation = await CSPSchemaValidator.fullValidation(this.currentDb);
+            
+            // Check if all validations passed
+            const allPassed = postFixValidation.every(item => item.status === 'pass');
             
             // Export fixed database
             const dbData = this.currentDb.export();
             const blob = new Blob([dbData], { type: 'application/x-sqlite3' });
             
-            // Download
+            // Download with appropriate filename
             const originalName = this.currentFile.name.replace('.sut', '');
-            const filename = `${originalName}_FIXED.sut`;
+            const filename = allPassed 
+                ? `${originalName}_FIXED_VALIDATED.sut`
+                : `${originalName}_FIXED.sut`;
             const url = URL.createObjectURL(blob);
             
             const link = document.createElement('a');
@@ -3351,8 +3574,13 @@ const BrushFixer = {
             
             URL.revokeObjectURL(url);
             
-            Logger.success(`Fixed file downloaded: ${filename}`);
-            UI.showStatus(`Fixed file downloaded: ${filename}`, 'success');
+            if (allPassed) {
+                Logger.success(`Fixed file downloaded: ${filename} - All validations passed!`);
+                UI.showStatus(`Fixed file downloaded: ${filename} - Fully validated!`, 'success');
+            } else {
+                Logger.success(`Fixed file downloaded: ${filename}`);
+                UI.showStatus(`Fixed file downloaded: ${filename}`, 'success');
+            }
             
         } catch (error) {
             Logger.error(`Fix failed: ${error.message}`);
@@ -3362,9 +3590,33 @@ const BrushFixer = {
         }
     },
     
+    sortFixesByDependency(fixes) {
+        const order = [
+            'missing_tables',
+            'missing_columns',
+            'manager_fields',
+            'null_node_values',
+            'missing_variants',
+            'orphaned_variants',
+            'integrity_check'
+        ];
+        
+        return fixes.sort((a, b) => {
+            const indexA = order.indexOf(a.type);
+            const indexB = order.indexOf(b.type);
+            return indexA - indexB;
+        });
+    },
+    
     applyFix(issue) {
         try {
             switch (issue.type) {
+                case 'missing_tables':
+                    this.fixMissingTables(issue);
+                    break;
+                case 'missing_columns':
+                    this.fixMissingColumns(issue);
+                    break;
                 case 'missing_variants':
                     this.fixMissingVariants();
                     break;
@@ -3377,11 +3629,15 @@ const BrushFixer = {
                 case 'orphaned_variants':
                     this.fixOrphanedVariants();
                     break;
+                case 'integrity_check':
+                    Logger.warning('Integrity issues require manual intervention');
+                    break;
                 // Note: page_size cannot be fixed in existing database
             }
             Logger.success(`Fixed: ${issue.description}`);
         } catch (error) {
             Logger.error(`Failed to fix ${issue.type}: ${error.message}`);
+            throw error;
         }
     },
     
@@ -3480,6 +3736,71 @@ const BrushFixer = {
                 WHERE n.NodeVariantID = Variant.VariantID OR n.NodeInitVariantID = Variant.VariantID
             )
         `);
+    },
+    
+    fixMissingTables(issue) {
+        const tableName = issue.tableName;
+        const createStatement = CSPSchema.getTableCreateStatement(tableName);
+        
+        if (!createStatement) {
+            throw new Error(`No schema definition for table ${tableName}`);
+        }
+        
+        // Check if table already exists
+        const checkStmt = this.currentDb.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+        );
+        checkStmt.bind([tableName]);
+        const exists = checkStmt.step();
+        checkStmt.free();
+        
+        if (exists) {
+            Logger.info(`Table ${tableName} already exists, skipping`);
+            return;
+        }
+        
+        this.currentDb.run(createStatement);
+        Logger.info(`Created missing table: ${tableName}`);
+    },
+    
+    fixMissingColumns(issue) {
+        const { tableName, columnName } = issue;
+        const columnDef = CSPSchema.getColumnDefinition(tableName, columnName);
+        
+        if (!columnDef) {
+            throw new Error(`No definition for column ${tableName}.${columnName}`);
+        }
+        
+        // Check if column already exists
+        const schema = this.currentDb.prepare(`PRAGMA table_info(${tableName})`);
+        let columnExists = false;
+        
+        while (schema.step()) {
+            const col = schema.get();
+            if (col[1] === columnName) {
+                columnExists = true;
+                break;
+            }
+        }
+        schema.free();
+        
+        if (columnExists) {
+            Logger.info(`Column ${tableName}.${columnName} already exists, skipping`);
+            return;
+        }
+        
+        // Add column with ALTER TABLE
+        this.currentDb.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnDef}`);
+        
+        // Set default value for existing rows if needed
+        if (columnDef.includes('NOT NULL')) {
+            const defaultValue = CSPSchema.getColumnDefault(tableName, columnName);
+            if (defaultValue !== null) {
+                this.currentDb.run(`UPDATE ${tableName} SET ${columnName} = ?`, [defaultValue]);
+            }
+        }
+        
+        Logger.info(`Added missing column: ${tableName}.${columnName}`);
     },
     
     async checkMissingTables(results) {
