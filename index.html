@@ -4050,14 +4050,30 @@ const BrushFixer = {
         const actionsList = UI.elements.fixerActionsList;
         actionsList.innerHTML = '';
         
-        // Check if file type supports fixing
+        // Check if file type supports fixing or conversion
         const canFix = this.currentFileType === 'sut';
+        const canConvert = this.currentFileType === 'abr' || this.currentFileType === 'brushset';
         
-        if (!canFix) {
+        if (canConvert) {
+            actionsList.innerHTML = `
+                <div style="padding:10px;background:#e3f2fd;border:1px solid #2196f3;border-radius:4px;">
+                    <strong>🔄 Convert to CSP Format</strong><br>
+                    This ${this.currentFileType.toUpperCase()} file can be converted to Clip Studio Paint (.sut) format.<br>
+                    ${this.issues.length > 0 ? '<br><strong>⚠️ Issues detected:</strong> The file has some issues but can still be converted.' : '<br><strong>✅ File is valid</strong> and ready for conversion.'}
+                </div>
+            `;
+            UI.elements.fixerActions.style.display = 'block';
+            UI.elements.applyFixes.textContent = '🔄 Convert to .sut';
+            UI.elements.applyFixes.disabled = false;
+            UI.elements.useAsTemplate.disabled = true;
+            return;
+        }
+        
+        if (!canFix && !canConvert) {
             actionsList.innerHTML = `
                 <div style="padding:10px;background:#fff3cd;border:1px solid #ffc107;border-radius:4px;">
                     <strong>ℹ️ Validation Only</strong><br>
-                    ${this.currentFileType.toUpperCase()} files cannot be automatically fixed.<br>
+                    ${this.currentFileType.toUpperCase()} files cannot be automatically fixed or converted.<br>
                     This tool validates the file structure and reports issues for your review.
                 </div>
             `;
@@ -4081,6 +4097,7 @@ const BrushFixer = {
         });
         
         UI.elements.fixerActions.style.display = 'block';
+        UI.elements.applyFixes.textContent = '✅ Apply Fixes & Download';
         UI.elements.applyFixes.disabled = false;
         UI.elements.useAsTemplate.disabled = false;
     },
@@ -4148,13 +4165,21 @@ const BrushFixer = {
     },
     
     async applyFixesAndDownload() {
-        if (!this.currentDb || this.issues.length === 0) {
-            return;
-        }
-        
         UI.showLoading(true);
         
         try {
+            // Check if this is a conversion request
+            if (this.currentFileType === 'abr' || this.currentFileType === 'brushset') {
+                await this.convertToSUT();
+                return;
+            }
+            
+            // Otherwise, it's a SUT fix request
+            if (!this.currentDb || this.issues.length === 0) {
+                UI.showLoading(false);
+                return;
+            }
+            
             Logger.info('Applying fixes...');
             
             // Get selected fixes
@@ -4209,6 +4234,62 @@ const BrushFixer = {
         } catch (error) {
             Logger.error(`Fix failed: ${error.message}`);
             UI.showStatus(`Fix failed: ${error.message}`, 'error');
+        } finally {
+            UI.showLoading(false);
+        }
+    },
+    
+    async convertToSUT() {
+        try {
+            Logger.info(`Converting ${this.currentFileType.toUpperCase()} to .sut format...`);
+            
+            // Create a File object from the current file data
+            const file = new File([this.currentFileData], this.currentFile.name, {
+                type: this.currentFileType === 'abr' ? 'application/octet-stream' : 'application/zip'
+            });
+            
+            // Process the file using FileManager
+            let brushes = [];
+            
+            if (this.currentFileType === 'abr') {
+                brushes = await FileManager.processAbrFile(file);
+            } else if (this.currentFileType === 'brushset') {
+                const zip = new JSZip();
+                const zipData = await zip.loadAsync(this.currentFileData);
+                brushes = await FileManager.processProcreateSet(zipData, this.currentFile.name);
+            }
+            
+            if (brushes.length === 0) {
+                throw new Error('No brushes found in file');
+            }
+            
+            Logger.success(`Extracted ${brushes.length} brush(es)`);
+            
+            // Auto-correct settings if enabled
+            if (UI.elements.autoCorrectSettings.checked) {
+                BrushSettingsAutoCorrector.correctAllBrushSettings(brushes);
+            }
+            
+            // Ensure template is loaded
+            if (!SUT_TEMPLATE) {
+                Logger.info('Loading default template...');
+                await TemplateManager.loadDefaultTemplate();
+            }
+            
+            // Convert to SUT using the Converter
+            Logger.info('Converting to .sut format...');
+            
+            const packageName = this.currentFile.name.replace(/\.(abr|brushset)$/i, '');
+            const author = 'Converted';
+            
+            await Converter.convertToSUT(brushes, packageName, author);
+            
+            Logger.success('Conversion complete!');
+            UI.showStatus('File converted and downloaded successfully', 'success');
+            
+        } catch (error) {
+            Logger.error(`Conversion failed: ${error.message}`);
+            UI.showStatus(`Conversion error: ${error.message}`, 'error');
         } finally {
             UI.showLoading(false);
         }
@@ -4565,7 +4646,7 @@ const BrushFixer = {
             }
             
             results.innerHTML += '<br><strong>ABR File Analysis Complete</strong><br>';
-            results.innerHTML += `<em>Note: ABR files cannot be automatically fixed. Use this tool to validate before conversion.</em><br>`;
+            results.innerHTML += `<em>Note: This ABR file can be converted to .sut format. Click "Convert to .sut" below.</em><br>`;
             
         } catch (error) {
             results.innerHTML += `❌ <strong>Validation Error:</strong> ${error.message}<br>`;
@@ -4640,7 +4721,7 @@ const BrushFixer = {
             }
             
             results.innerHTML += '<br><strong>Brushset Analysis Complete</strong><br>';
-            results.innerHTML += `<em>Note: Brushset files cannot be automatically fixed. Use this tool to validate before conversion.</em><br>`;
+            results.innerHTML += `<em>Note: This brushset can be converted to .sut format. Click "Convert to .sut" below.</em><br>`;
             
         } catch (error) {
             results.innerHTML += `❌ <strong>Validation Error:</strong> ${error.message}<br>`;
