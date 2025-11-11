@@ -3847,27 +3847,16 @@ const TemplateManager = {
             // Insert Manager record
             const rootUuid = CSPUUIDGenerator.generateUuidBlob();
             
+            // Create Manager with NULL RootUuid - will be set to first brush's UUID during conversion
+            // CSP expects the first brush to BE the root, not a child of a root container
             SUT_TEMPLATE.run(`
                 INSERT INTO Manager (
                     ToolType, Version, RootUuid, CurrentNodeUuid,
                     MaxVariantID, CommonVariantID, ObjectNodeUuid,
                     PressureGraph, SavedCount
                 )
-                VALUES (0, 100, ?, NULL, 1000, NULL, NULL, NULL, 0)
-            `, [rootUuid]);
-            
-            // Insert root Node with ALL required fields
-            SUT_TEMPLATE.run(`
-                INSERT INTO Node (
-                    NodeUuid, NodeName, NodeShortCutKey, NodeLock, NodeHidden,
-                    NodeInputOp, NodeOutputOp, NodeRangeOp,
-                    NodeIcon, NodeIconColor,
-                    NodeInstalledState, NodeInstalledVersion,
-                    NodeNextUuid, NodeFirstChildUuid, NodeSelectedUuid,
-                    NodeVariantID, NodeInitVariantID, NodeCustomIcon
-                )
-                VALUES (?, 'Root Tool', NULL, 0, 0, 10, 10, 0, 128, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
-            `, [rootUuid]);
+                VALUES (0, 126, NULL, NULL, 1000, NULL, NULL, NULL, 0)
+            `);
             
             AppState.templateLoaded = true;
             Logger.success('Default CSP template created successfully');
@@ -5272,23 +5261,11 @@ const Converter = {
         // Create new database from template
         const db = new SQL.Database(SUT_TEMPLATE.export());
         
-        // Get root UUID from Manager
-        let rootUuid = null;
-        const rootQuery = db.prepare('SELECT RootUuid FROM Manager WHERE _PW_ID = 1');
-        if (rootQuery.step()) {
-            rootUuid = rootQuery.get()[0];
-        }
-        rootQuery.free();
-        
-        if (!rootUuid) {
-            throw new Error('Invalid template - missing root UUID');
-        }
-        
         const convertedBrushes = [];
         const failedBrushes = [];
         let variantIdCounter = 1000;  // Start from 1000
         let prevNodeUuid = null;
-        let firstBrushUuid = null;
+        let isFirstBrush = true;
         
         for (let i = 0; i < AppState.brushes.length; i++) {
             const brush = AppState.brushes[i];
@@ -5304,9 +5281,10 @@ const Converter = {
                 const variantId = ++variantIdCounter;
                 const initVariantId = ++variantIdCounter;  // Separate ID for initial variant
                 
-                // Track first brush for root node
-                if (i === 0) {
-                    firstBrushUuid = nodeUuid;
+                // First brush becomes the root (CSP expects this)
+                if (isFirstBrush) {
+                    db.run(`UPDATE Manager SET RootUuid = ? WHERE _PW_ID = 1`, [nodeUuid]);
+                    isFirstBrush = false;
                 }
                 
                 // Generate material UUID and insert brush tip PNG data
@@ -5402,7 +5380,7 @@ const Converter = {
                 `, [
                     nodeUuid,
                     brush.name,
-                    null,  // NodeShortCutKey: null (no shortcut)
+                    0,     // NodeShortCutKey: 0 (no shortcut)
                     0,     // NodeLock: 0 = unlocked
                     0,     // NodeHidden: 0 = visible
                     10,    // NodeInputOp: 10 (default)
@@ -5410,11 +5388,11 @@ const Converter = {
                     0,     // NodeRangeOp: 0 (default)
                     128,   // NodeIcon: 128 (default brush icon)
                     0,     // NodeIconColor: 0 (default)
-                    null,  // NodeInstalledState: null
-                    null,  // NodeInstalledVersion: null
-                    null,  // NodeNextUuid: will be updated for previous node
-                    null,  // NodeFirstChildUuid: null (leaf node)
-                    null,  // NodeSelectedUuid: null
+                    0,     // NodeInstalledState: 0
+                    0,     // NodeInstalledVersion: 0
+                    new Uint8Array([0x00]),  // NodeNextUuid: X'00' (no next node initially)
+                    new Uint8Array([0x00]),  // NodeFirstChildUuid: X'00' (no children)
+                    new Uint8Array([0x00]),  // NodeSelectedUuid: X'00' (no selection)
                     variantId,
                     initVariantId,
                     null   // NodeCustomIcon: null (use default)
@@ -5441,12 +5419,7 @@ const Converter = {
             }
         }
         
-        // Update root node to point to first brush
-        if (firstBrushUuid) {
-            db.run(`
-                UPDATE Node SET NodeFirstChildUuid = ? WHERE NodeUuid = ?
-            `, [firstBrushUuid, rootUuid]);
-        }
+        // No need to update root node - first brush IS the root in CSP
         
         // Update Manager with MaxVariantID
         db.run(`
