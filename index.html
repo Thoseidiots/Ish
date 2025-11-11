@@ -422,80 +422,87 @@ const PythonBackend = {
     
     async checkAvailability() {
         try {
-            // Try to ping Python backend
-            const response = await fetch('/api/python/status');
+            // Try to ping Python backend (simple_server.py)
+            const response = await fetch('http://localhost:5001/api/status');
             if (response.ok) {
+                const data = await response.json();
                 this.enabled = true;
-                Logger.python('Python backend is available');
+                Logger.python(`Python backend available: ${data.message}`);
+                UI.showStatus('✅ Python backend connected (CSP-compatible)', 'success');
                 return true;
             }
         } catch (error) {
-            Logger.warning('Python backend not available');
+            Logger.warning('Python backend not available - run: python3 simple_server.py');
+            UI.showStatus('⚠️ Python backend not running. JavaScript mode (may not work in CSP)', 'warning');
         }
         this.enabled = false;
         return false;
     },
     
-    async convertFiles(files, settings) {
+    async convertFiles(brushFiles) {
         if (!this.enabled) {
-            throw new Error('Python backend not available');
+            throw new Error('Python backend not available - run: python3 simple_server.py');
         }
         
         const formData = new FormData();
+        const packageName = document.getElementById('packageName').value || 'Converted_Brushes';
         
-        // Add files
-        files.forEach((file, index) => {
-            formData.append(`file_${index}`, file);
-        });
+        // Convert AppState.brushes to File objects with brush tip data
+        const brushCount = AppState.brushes.length;
+        Logger.python(`Preparing ${brushCount} extracted brush(es) for Python backend`);
         
-        // Add settings
-        formData.append('settings', JSON.stringify(settings));
-        formData.append('package_name', document.getElementById('packageName').value);
-        formData.append('author_name', document.getElementById('authorName').value);
+        for (const brush of AppState.brushes) {
+            // Get the first tip PNG (data URL or blob URL)
+            const tipUrl = brush.tipPNGs && brush.tipPNGs[0];
+            if (!tipUrl) {
+                Logger.warning(`Skipping brush ${brush.name} - no tip image found`);
+                continue;
+            }
+            
+            // Fetch the image data
+            const response = await fetch(tipUrl);
+            const blob = await response.blob();
+            
+            // Create File object with brush name
+            const file = new File([blob], `${brush.name}.png`, { type: 'image/png' });
+            formData.append('brushes', file);
+        }
         
-        // Add pressure curves
-        formData.append('size_curve', JSON.stringify(PressureCurveUtils.curveData.size.points));
-        formData.append('opacity_curve', JSON.stringify(PressureCurveUtils.curveData.opacity.points));
-        formData.append('density_curve', JSON.stringify(PressureCurveUtils.curveData.density.points));
+        formData.append('packageName', packageName);
         
         try {
             UI.showLoading(true);
-            UI.showStatus('Processing with Python backend...', 'info');
+            UI.showStatus('Converting with Python backend (CSP-compatible)...', 'info');
+            Logger.python(`Sending ${brushCount} brush(es) to Python backend`);
             
-            const response = await fetch('/api/python/convert', {
+            const response = await fetch('http://localhost:5001/api/convert', {
                 method: 'POST',
                 body: formData
             });
             
             if (!response.ok) {
-                throw new Error(`Python backend error: ${response.statusText}`);
+                const error = await response.json();
+                throw new Error(error.error || 'Python conversion failed');
             }
             
-            const result = await response.json();
+            // Download the .sut file
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${packageName}.sut`;
+            link.click();
+            URL.revokeObjectURL(url);
             
-            if (result.success) {
-                // Download the result
-                const link = document.createElement('a');
-                link.href = result.download_url;
-                link.download = result.filename;
-                link.click();
-                
-                Logger.python(`Python conversion completed: ${result.filename}`);
-                UI.showStatus(`Python conversion completed: ${result.filename}`, 'success');
-                
-                // Show Python output
-                if (result.log) {
-                    document.getElementById('pythonOutput').style.display = 'block';
-                    document.getElementById('pythonLog').textContent = result.log;
-                }
-                
-            } else {
-                throw new Error(result.error || 'Python conversion failed');
-            }
+            Logger.success(`✅ Python conversion completed: ${packageName}.sut`);
+            UI.showStatus(`✅ Conversion successful! Import ${packageName}.sut into CSP`, 'success');
+            
+            AppState.stats.brushesConverted = brushCount;
+            UI.updateStats();
             
         } catch (error) {
             Logger.error(`Python conversion error: ${error.message}`);
-            UI.showStatus(`Python error: ${error.message}`, 'error');
+            UI.showStatus(`❌ Python error: ${error.message}`, 'error');
             throw error;
         } finally {
             UI.showLoading(false);
@@ -2463,6 +2470,21 @@ const CSPEncodingUtils = {
             }
         }
         return uuid;
+    },
+    
+    // Encode string as UTF-16 Little Endian with null terminator
+    encodeUTF16LE(text) {
+        // Convert to UTF-16 Little Endian with 2-byte null terminator
+        const result = new Uint8Array(text.length * 2 + 2);
+        for (let i = 0; i < text.length; i++) {
+            const code = text.charCodeAt(i);
+            result[i * 2] = code & 0xFF;           // Low byte
+            result[i * 2 + 1] = (code >> 8) & 0xFF; // High byte
+        }
+        // 2-byte null terminator
+        result[text.length * 2] = 0x00;
+        result[text.length * 2 + 1] = 0x00;
+        return result;
     }
 };
 
@@ -3488,10 +3510,16 @@ const ConversionFactory = {
                 
                 // Generate package name from first file
                 const packageName = files[0].name.replace(/\.(png|jpg|jpeg|abr|zip|brushset|sut)$/i, '') || 'ConvertedBrushes';
-                const author = 'One-Click Convert';
                 
-                // Convert
-                await Converter.convertToSUT(AppState.brushes, packageName, author);
+                // Try Python backend first (CSP-compatible), fallback to JavaScript
+                if (PythonBackend.enabled) {
+                    Logger.info('Using Python backend for CSP-compatible conversion');
+                    await PythonBackend.convertFiles(files);
+                } else {
+                    Logger.warning('Python backend not available, using JavaScript (may not work in CSP)');
+                    const author = 'One-Click Convert';
+                    await Converter.convertToSUT(AppState.brushes, packageName, author);
+                }
                 
                 Logger.success('✅ Conversion complete! File downloaded automatically.');
                 UI.showStatus('✅ One-Click Conversion Complete!', 'success');
@@ -5281,6 +5309,13 @@ const Converter = {
         // Create new database from template
         const db = new SQL.Database(SUT_TEMPLATE.export());
         
+        // CRITICAL FIX: Clear any existing Node and Variant records from template
+        // This ensures the first brush we add becomes the root
+        db.run('DELETE FROM Node');
+        db.run('DELETE FROM Variant');
+        db.run('DELETE FROM MaterialFile');
+        Logger.info('Cleared template Node/Variant/MaterialFile records');
+        
         const convertedBrushes = [];
         const failedBrushes = [];
         let variantIdCounter = 1000;  // Start from 1000
@@ -5309,8 +5344,11 @@ const Converter = {
                 
                 // Generate material UUID and insert brush tip PNG data
                 let materialUuid = null;
+                let pngData = null;  // Declare outside try block so it's available for BrushPatternImageArray
+                Logger.info(`Brush ${brush.name}: tipPNGs=${brush.tipPNGs ? brush.tipPNGs.length : 'null'}`);
                 if (brush.tipPNGs && brush.tipPNGs.length > 0) {
                     materialUuid = CSPEncodingUtils.generateMaterialUuid();
+                    Logger.info(`Generated materialUuid: ${materialUuid}`);
                     
                     // Extract and insert actual PNG data into MaterialFile table
                     try {
@@ -5318,7 +5356,7 @@ const Converter = {
                         const response = await fetch(tipUrl);
                         const blob = await response.blob();
                         const arrayBuffer = await blob.arrayBuffer();
-                        const pngData = new Uint8Array(arrayBuffer);
+                        pngData = new Uint8Array(arrayBuffer);
                         
                         // Get image dimensions
                         const img = new Image();
@@ -5333,6 +5371,8 @@ const Converter = {
                         const originalPath = `.${materialUuid}:data:material_0.layer`;
                         const catalogPath = `.${materialUuid}`;
                         
+                        Logger.info(`About to INSERT into MaterialFile: _PW_ID=${i + 1}, pngData.length=${pngData.length}`);
+                        
                         db.run(`
                             INSERT INTO MaterialFile (
                                 _PW_ID, InstallFolder, OriginalPath, OldMaterial, FileData, CatalogPath, MaterialUuid
@@ -5346,6 +5386,8 @@ const Converter = {
                             catalogPath,     // CatalogPath
                             ''               // MaterialUuid (empty string)
                         ]);
+                        
+                        Logger.info(`INSERT completed successfully`);
                         
                         Logger.info(`Inserted brush tip for ${brush.name} into MaterialFile (${img.width}x${img.height}, ${pngData.length} bytes)`);
                     } catch (error) {
@@ -5371,17 +5413,65 @@ const Converter = {
                 variantData.BrushRotation = brush.settings.angle || 0.0;
                 variantData.BrushFlow = brush.settings.opacity || 100;
                 
-                // Override effector BLOBs if pressure sensitivity is enabled
+                // CRITICAL: Don't override effector BLOBs - CSP requires exact 40-byte format
+                // Custom effector encoding causes CSP to reject the file
+                // Keep the default 40-byte effectors from CSP_VARIANT_DEFAULTS
+                // TODO: Research proper CSP effector format for pressure sensitivity
+                /*
                 if (brush.settings.sizePressure) {
                     variantData.BrushSizeEffector = CSPEncodingUtils.encodeEffectorBlob(brush.settings.sizePressure, sizeCurve);
                 }
                 if (brush.settings.opacityPressure) {
                     variantData.BrushFlowEffector = CSPEncodingUtils.encodeEffectorBlob(brush.settings.opacityPressure, opacityCurve);
                 }
+                */
                 
-                // Override brush pattern if material UUID exists
-                if (materialUuid) {
-                    variantData.BrushPatternImageArray = CSPEncodingUtils.encodeBrushPatternArray(brush.name, materialUuid);
+                // CRITICAL: Create COMPLETE BrushPatternImageArray with embedded PNG data
+                // CSP requires: header + material reference + type/flags + brush name + PNG bytes
+                if (materialUuid && pngData) {
+                    // 1. Create material reference string (UTF-16LE)
+                    const materialRef = `.:12:45:${materialUuid}:data:material_0.layer`;
+                    const materialRefBytes = CSPEncodingUtils.encodeUTF16LE(materialRef);
+                    
+                    // 2. Create type/flags section (8 bytes)
+                    const typeFlags = new Uint8Array([
+                        0x00, 0x00, 0x00, 0x02,  // Pattern type: 2
+                        0x00, 0x00, 0x00, 0x14   // Sub-type: 20
+                    ]);
+                    
+                    // 3. Encode brush name (UTF-16LE)
+                    const brushNameBytes = CSPEncodingUtils.encodeUTF16LE(brush.name);
+                    
+                    // 4. Calculate data length (everything after 16-byte header)
+                    const dataLength = materialRefBytes.length + typeFlags.length + 
+                                     brushNameBytes.length + pngData.length;
+                    
+                    // 5. Create 16-byte header (big-endian)
+                    const header = new Uint8Array(16);
+                    const headerView = new DataView(header.buffer);
+                    headerView.setUint32(0, 8, false);           // Magic: 8
+                    headerView.setUint32(4, 1, false);           // Count: 1
+                    headerView.setUint32(8, dataLength, false);  // Data length
+                    headerView.setUint32(12, 0x84, false);       // Flags: 0x84
+                    
+                    // 6. Combine all sections
+                    const totalSize = 16 + dataLength;
+                    const patternArray = new Uint8Array(totalSize);
+                    
+                    let offset = 0;
+                    patternArray.set(header, offset);
+                    offset += 16;
+                    patternArray.set(materialRefBytes, offset);
+                    offset += materialRefBytes.length;
+                    patternArray.set(typeFlags, offset);
+                    offset += typeFlags.length;
+                    patternArray.set(brushNameBytes, offset);
+                    offset += brushNameBytes.length;
+                    patternArray.set(pngData, offset);
+                    
+                    variantData.BrushPatternImageArray = patternArray;
+                    
+                    Logger.info(`Created BrushPatternImageArray: ${totalSize} bytes (header:16 + ref:${materialRefBytes.length} + flags:8 + name:${brushNameBytes.length} + png:${pngData.length})`);
                 }
                 
                 // Build column list and values array (all 106 fields)
