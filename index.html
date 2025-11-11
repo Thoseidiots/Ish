@@ -3847,25 +3847,19 @@ const TemplateManager = {
             // Insert Manager record
             const rootUuid = CSPUUIDGenerator.generateUuidBlob();
             
-            // Create Manager with temporary RootUuid - will be updated to first brush's UUID during conversion
-            // CSP expects the first brush to BE the root, not a child of a root container
-            const tempRootUuid = CSPUUIDGenerator.generateUuidBlob();
-            const objectUuid = CSPUUIDGenerator.generateUuidBlob();
-            const nullByte = new Uint8Array([0x00]);
+            // Use exact template data from working sample.sut
+            // This ensures 100% compatibility with CSP
+            const CSP_TEMPLATE_DATA = {
+                Manager: {
+                    CurrentNodeUuid: new Uint8Array([0x00]),
+                    CommonVariantID: 44,
+                    ObjectNodeUuid: new Uint8Array([0x6a, 0x6b, 0x33, 0xe5, 0x3d, 0x5b, 0x49, 0x26, 0x9b, 0x66, 0x05, 0x55, 0xac, 0xd5, 0xe2, 0xc7]),
+                    PressureGraph: new Uint8Array([0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xbe, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0x9e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xd6, 0xc4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xcc, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xe2, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xe5, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xe6, 0xc4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xe6, 0xc4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+                }
+            };
             
-            // Create default pressure graph (from sample.sut)
-            const pressureGraph = new Uint8Array([
-                0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x10,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xbe, 0x60, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x3f, 0x9e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x3f, 0xd6, 0xc4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xcc, 0x90, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x3f, 0xe2, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x3f, 0xe5, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xe6, 0xc4, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x3f, 0xe6, 0xc4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xf0, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-            ]);
+            // Create Manager with temporary RootUuid (will be updated to first brush during conversion)
+            const tempRootUuid = CSPUUIDGenerator.generateUuidBlob();
             
             SUT_TEMPLATE.run(`
                 INSERT INTO Manager (
@@ -3874,7 +3868,15 @@ const TemplateManager = {
                     PressureGraph, SavedCount
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [0, 126, tempRootUuid, nullByte, 1000, 44, objectUuid, pressureGraph, 0]);
+            `, [
+                0, 126, tempRootUuid,
+                CSP_TEMPLATE_DATA.Manager.CurrentNodeUuid,
+                1000,
+                CSP_TEMPLATE_DATA.Manager.CommonVariantID,
+                CSP_TEMPLATE_DATA.Manager.ObjectNodeUuid,
+                CSP_TEMPLATE_DATA.Manager.PressureGraph,
+                0
+            ]);
             
             AppState.templateLoaded = true;
             Logger.success('Default CSP template created successfully');
@@ -5398,22 +5400,22 @@ const Converter = {
                 `, [
                     nodeUuid,
                     brush.name,
-                    0,     // NodeShortCutKey: 0 (no shortcut)
-                    0,     // NodeLock: 0 = unlocked
-                    0,     // NodeHidden: 0 = visible
-                    10,    // NodeInputOp: 10 (default)
-                    10,    // NodeOutputOp: 10 (default)
-                    0,     // NodeRangeOp: 0 (default)
-                    128,   // NodeIcon: 128 (default brush icon)
-                    0,     // NodeIconColor: 0 (default)
-                    0,     // NodeInstalledState: 0
-                    0,     // NodeInstalledVersion: 0
-                    new Uint8Array([0x00]),  // NodeNextUuid: X'00' (no next node initially)
-                    new Uint8Array([0x00]),  // NodeFirstChildUuid: X'00' (no children)
-                    new Uint8Array([0x00]),  // NodeSelectedUuid: X'00' (no selection)
+                    0,     // NodeShortCutKey
+                    0,     // NodeLock
+                    0,     // NodeHidden
+                    10,    // NodeInputOp
+                    10,    // NodeOutputOp
+                    0,     // NodeRangeOp
+                    128,   // NodeIcon
+                    0,     // NodeIconColor
+                    0,     // NodeInstalledState
+                    0,     // NodeInstalledVersion
+                    new Uint8Array([0x00]),  // NodeNextUuid
+                    new Uint8Array([0x00]),  // NodeFirstChildUuid
+                    new Uint8Array([0x00]),  // NodeSelectedUuid
                     variantId,
                     initVariantId,
-                    null   // NodeCustomIcon: null (use default)
+                    null   // NodeCustomIcon
                 ]);
                 
                 // Link previous node to this one
