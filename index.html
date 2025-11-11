@@ -166,6 +166,7 @@ input[type=range]{width:100%;margin:10px 0}
 <h2 style="color:#667eea;margin-bottom:10px">Drop Brush Files Here</h2>
 <p style="color:#6c757d;margin-bottom:20px">Supports: PNG, JPG, ABR, ZIP, .brushset, .sut files</p>
 <div class="import-options">
+<button class="btn btn-success" id="oneClickConvertBtn" style="font-size:1.1em;padding:12px 24px;">⚡ One-Click Convert</button>
 <button class="btn" id="importFilesBtn">📁 Import Brush Files</button>
 <button class="btn" id="importZipBtn">📦 Import ZIP/Brushset</button>
 <button class="btn btn-secondary" id="clearAllBtn">🗑️ Clear All</button>
@@ -1042,6 +1043,7 @@ const UI = {
         fileInput: document.getElementById('fileInput'),
         zipInput: document.getElementById('zipInput'),
         templateInput: document.getElementById('templateInput'),
+        oneClickConvertBtn: document.getElementById('oneClickConvertBtn'),
         importFilesBtn: document.getElementById('importFilesBtn'),
         importZipBtn: document.getElementById('importZipBtn'),
         clearAllBtn: document.getElementById('clearAllBtn'),
@@ -1188,6 +1190,10 @@ const UI = {
         });
 
         // Event listeners
+        this.elements.oneClickConvertBtn.addEventListener('click', () => {
+            ConversionFactory.startOneClickConversion();
+        });
+        
         this.elements.importFilesBtn.addEventListener('click', () => {
             this.elements.fileInput.click();
         });
@@ -3212,6 +3218,99 @@ const FileManager = {
             densityPressure: document.getElementById('densityPressure').checked,
             antiAliasing: document.getElementById('antiAliasing').checked
         };
+    }
+};
+
+// ============================================================================
+// CONVERSION FACTORY - ONE-CLICK AUTOMATED WORKFLOW
+// ============================================================================
+const ConversionFactory = {
+    
+    async startOneClickConversion() {
+        try {
+            Logger.info('🏭 Starting One-Click Conversion Factory...');
+            UI.showLoading(true);
+            
+            // Step 1: Prompt user to select files
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.multiple = true;
+            fileInput.accept = '.png,.jpg,.jpeg,.abr,.zip,.brushset,.sut';
+            
+            const files = await new Promise((resolve) => {
+                fileInput.onchange = (e) => resolve(Array.from(e.target.files));
+                fileInput.click();
+            });
+            
+            if (!files || files.length === 0) {
+                UI.showLoading(false);
+                return;
+            }
+            
+            Logger.success(`📦 Selected ${files.length} file(s)`);
+            
+            // Step 2: Separate files by type
+            const brushFiles = [];
+            const templateFiles = [];
+            
+            for (const file of files) {
+                const ext = file.name.toLowerCase().split('.').pop();
+                if (ext === 'sut') {
+                    templateFiles.push(file);
+                } else {
+                    brushFiles.push(file);
+                }
+            }
+            
+            // Step 3: Load template (auto-fix if needed)
+            if (templateFiles.length > 0) {
+                Logger.info('📋 Loading custom template...');
+                await TemplateManager.loadTemplate(templateFiles[0]);
+            } else if (!SUT_TEMPLATE) {
+                Logger.info('📋 Loading default template...');
+                await TemplateManager.loadDefaultTemplate();
+            }
+            
+            // Step 4: Process brush files
+            if (brushFiles.length > 0) {
+                Logger.info(`🎨 Processing ${brushFiles.length} brush file(s)...`);
+                await FileManager.handleFiles(brushFiles);
+            } else {
+                throw new Error('No brush files selected');
+            }
+            
+            // Step 5: Wait a moment for processing to complete
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Step 6: Auto-convert to SUT
+            if (AppState.brushes.length > 0) {
+                Logger.info(`🔄 Converting ${AppState.brushes.length} brush(es) to .sut format...`);
+                
+                // Initialize abort controller
+                AppState.abortController = new AbortController();
+                AppState.converting = true;
+                
+                // Generate package name from first file
+                const packageName = files[0].name.replace(/\.(png|jpg|jpeg|abr|zip|brushset|sut)$/i, '') || 'ConvertedBrushes';
+                const author = 'One-Click Convert';
+                
+                // Convert
+                await Converter.convertToSUT(AppState.brushes, packageName, author);
+                
+                Logger.success('✅ Conversion complete! File downloaded automatically.');
+                UI.showStatus('✅ One-Click Conversion Complete!', 'success');
+            } else {
+                throw new Error('No brushes were extracted from files');
+            }
+            
+        } catch (error) {
+            Logger.error(`❌ One-Click Conversion failed: ${error.message}`);
+            UI.showStatus(`Error: ${error.message}`, 'error');
+        } finally {
+            AppState.converting = false;
+            AppState.abortController = null;
+            UI.showLoading(false);
+        }
     }
 };
 
