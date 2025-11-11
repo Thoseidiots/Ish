@@ -5328,10 +5328,26 @@ const Converter = {
                             img.src = tipUrl;
                         });
                         
-                        // Note: MaterialFile table is optional and not used for brush tips
-                        // Brush tips are stored in Variant.BrushPatternImageArray
+                        // CRITICAL: Insert brush tip into MaterialFile table
+                        // CSP requires the actual image data in MaterialFile, not just in BrushPatternImageArray
+                        const originalPath = `.${materialUuid}:data:material_0.layer`;
+                        const catalogPath = `.${materialUuid}`;
                         
-                        Logger.info(`Prepared brush tip for ${brush.name} (${img.width}x${img.height})`);
+                        db.run(`
+                            INSERT INTO MaterialFile (
+                                _PW_ID, InstallFolder, OriginalPath, OldMaterial, FileData, CatalogPath, MaterialUuid
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        `, [
+                            i + 1,           // _PW_ID
+                            0,               // InstallFolder
+                            originalPath,    // OriginalPath
+                            0,               // OldMaterial
+                            pngData,         // FileData (actual PNG bytes)
+                            catalogPath,     // CatalogPath
+                            ''               // MaterialUuid (empty string)
+                        ]);
+                        
+                        Logger.info(`Inserted brush tip for ${brush.name} into MaterialFile (${img.width}x${img.height}, ${pngData.length} bytes)`);
                     } catch (error) {
                         Logger.warning(`Failed to embed brush tip for ${brush.name}: ${error.message}`);
                         materialUuid = null; // Don't reference if embedding failed
