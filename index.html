@@ -1675,10 +1675,12 @@ const CSPSchema = {
             'MaterialFile': `
                 CREATE TABLE MaterialFile (
                     _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                    MaterialID BLOB,
-                    FileData BLOB,
-                    Width INTEGER,
-                    Height INTEGER
+                    InstallFolder INTEGER DEFAULT NULL,
+                    OriginalPath TEXT DEFAULT NULL,
+                    OldMaterial INTEGER DEFAULT NULL,
+                    FileData BLOB DEFAULT NULL,
+                    CatalogPath TEXT DEFAULT NULL,
+                    MaterialUuid TEXT DEFAULT NULL
                 )
             `
         };
@@ -1723,10 +1725,12 @@ const CSPSchema = {
                 'CompositeMode': 'CompositeMode INTEGER DEFAULT 0'
             },
             'MaterialFile': {
-                'MaterialID': 'MaterialID BLOB',
-                'FileData': 'FileData BLOB',
-                'Width': 'Width INTEGER',
-                'Height': 'Height INTEGER'
+                'InstallFolder': 'InstallFolder INTEGER DEFAULT NULL',
+                'OriginalPath': 'OriginalPath TEXT DEFAULT NULL',
+                'OldMaterial': 'OldMaterial INTEGER DEFAULT NULL',
+                'FileData': 'FileData BLOB DEFAULT NULL',
+                'CatalogPath': 'CatalogPath TEXT DEFAULT NULL',
+                'MaterialUuid': 'MaterialUuid TEXT DEFAULT NULL'
             }
         };
         
@@ -5137,13 +5141,10 @@ const Converter = {
                             img.src = tipUrl;
                         });
                         
-                        // Insert PNG data into MaterialFile table
-                        db.run(`
-                            INSERT INTO MaterialFile (MaterialID, FileData, Width, Height)
-                            VALUES (?, ?, ?, ?)
-                        `, [materialUuid, pngData, img.width, img.height]);
+                        // Note: MaterialFile table is optional and not used for brush tips
+                        // Brush tips are stored in Variant.BrushPatternImageArray
                         
-                        Logger.info(`Embedded brush tip for ${brush.name} (${img.width}x${img.height})`);
+                        Logger.info(`Prepared brush tip for ${brush.name} (${img.width}x${img.height})`);
                     } catch (error) {
                         Logger.warning(`Failed to embed brush tip for ${brush.name}: ${error.message}`);
                         materialUuid = null; // Don't reference if embedding failed
@@ -5211,7 +5212,7 @@ const Converter = {
                 `, [
                     nodeUuid,
                     brush.name,
-                    NULL,  // NodeShortCutKey: NULL (no shortcut)
+                    null,  // NodeShortCutKey: null (no shortcut)
                     0,     // NodeLock: 0 = unlocked
                     0,     // NodeHidden: 0 = visible
                     10,    // NodeInputOp: 10 (default)
@@ -5219,14 +5220,14 @@ const Converter = {
                     0,     // NodeRangeOp: 0 (default)
                     128,   // NodeIcon: 128 (default brush icon)
                     0,     // NodeIconColor: 0 (default)
-                    NULL,  // NodeInstalledState: NULL
-                    NULL,  // NodeInstalledVersion: NULL
+                    null,  // NodeInstalledState: null
+                    null,  // NodeInstalledVersion: null
                     null,  // NodeNextUuid: will be updated for previous node
-                    NULL,  // NodeFirstChildUuid: NULL (leaf node)
-                    NULL,  // NodeSelectedUuid: NULL
+                    null,  // NodeFirstChildUuid: null (leaf node)
+                    null,  // NodeSelectedUuid: null
                     variantId,
                     initVariantId,
-                    NULL   // NodeCustomIcon: NULL (use default)
+                    null   // NodeCustomIcon: null (use default)
                 ]);
                 
                 // Link previous node to this one
@@ -5409,4 +5410,3 @@ const Converter = {
 };
 </script>
 </body>
-</html>
