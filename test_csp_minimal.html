@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSP Minimal Test Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
+</head>
+<body>
+<h1>CSP Minimal Test File Generator</h1>
+<button id="generateBtn" onclick="generateTestFile()">Generate Test .sut File</button>
+<div id="status"></div>
+<pre id="log"></pre>
+
+<script>
+let SQL;
+let db;
+
+// Initialize SQL.js
+initSqlJs({
+    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+}).then(function(sql) {
+    SQL = sql;
+    log('✅ SQL.js loaded successfully');
+    document.getElementById('generateBtn').disabled = false;
+}).catch(err => {
+    log('❌ Failed to load SQL.js: ' + err.message, 'error');
+});
+
+function log(message, type = 'info') {
+    const logEl = document.getElementById('log');
+    const timestamp = new Date().toLocaleTimeString();
+    logEl.textContent += `[${timestamp}] ${message}\n`;
+    console.log(message);
+}
+
+function generateUUID() {
+    const uuid = new Uint8Array(16);
+    crypto.getRandomValues(uuid);
+    return uuid;
+}
+
+async function generateTestFile() {
+    try {
+        log('🔧 Creating minimal CSP test database...');
+        
+        // Create database with correct page size
+        db = new SQL.Database();
+        
+        // Set page size BEFORE creating tables
+        db.run('PRAGMA page_size = 1024');
+        db.run('PRAGMA encoding = "UTF-8"');
+        
+        log('📋 Creating schema...');
+        
+        // Create Manager table
+        db.run(`CREATE TABLE Manager(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            ToolType INTEGER DEFAULT NULL,
+            Version INTEGER DEFAULT NULL,
+            RootUuid BLOB DEFAULT NULL,
+            CurrentNodeUuid BLOB DEFAULT NULL,
+            MaxVariantID INTEGER DEFAULT NULL,
+            CommonVariantID INTEGER DEFAULT NULL,
+            ObjectNodeUuid BLOB DEFAULT NULL,
+            PressureGraph BLOB DEFAULT NULL,
+            SavedCount INTEGER DEFAULT NULL
+        )`);
+        
+        // Create Node table
+        db.run(`CREATE TABLE Node(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            NodeUuid BLOB DEFAULT NULL,
+            NodeName TEXT DEFAULT NULL,
+            NodeShortCutKey INTEGER DEFAULT NULL,
+            NodeLock INTEGER DEFAULT NULL,
+            NodeInputOp INTEGER DEFAULT NULL,
+            NodeOutputOp INTEGER DEFAULT NULL,
+            NodeRangeOp INTEGER DEFAULT NULL,
+            NodeIcon INTEGER DEFAULT NULL,
+            NodeIconColor INTEGER DEFAULT NULL,
+            NodeHidden INTEGER DEFAULT NULL,
+            NodeInstalledState INTEGER DEFAULT NULL,
+            NodeInstalledVersion INTEGER DEFAULT NULL,
+            NodeNextUuid BLOB DEFAULT NULL,
+            NodeFirstChildUuid BLOB DEFAULT NULL,
+            NodeSelectedUuid BLOB DEFAULT NULL,
+            NodeVariantID INTEGER DEFAULT NULL,
+            NodeInitVariantID INTEGER DEFAULT NULL,
+            NodeCustomIcon NULL DEFAULT NULL
+        )`);
+        
+        // Create Variant table
+        db.run(`CREATE TABLE Variant(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            VariantID INTEGER DEFAULT NULL,
+            VariantShowSeparator INTEGER DEFAULT NULL,
+            VariantShowParam BLOB DEFAULT NULL,
+            Opacity INTEGER DEFAULT NULL,
+            AntiAlias INTEGER DEFAULT NULL,
+            CompositeMode INTEGER DEFAULT NULL,
+            BrushSize REAL DEFAULT NULL,
+            BrushSizeUnit INTEGER DEFAULT NULL,
+            BrushSizeEffector BLOB DEFAULT NULL,
+            BrushFlow INTEGER DEFAULT NULL,
+            BrushFlowEffector BLOB DEFAULT NULL,
+            BrushHardness INTEGER DEFAULT NULL,
+            BrushInterval REAL DEFAULT NULL,
+            BrushIntervalEffector BLOB DEFAULT NULL,
+            BrushThickness INTEGER DEFAULT NULL,
+            BrushThicknessEffector BLOB DEFAULT NULL,
+            BrushRotation REAL DEFAULT NULL,
+            BrushRotationEffector INTEGER DEFAULT NULL,
+            BrushUsePatternImage INTEGER DEFAULT NULL,
+            BrushPatternImageArray BLOB DEFAULT NULL,
+            BrushPatternOrderType INTEGER DEFAULT NULL,
+            TextureImage NULL DEFAULT NULL,
+            TextureCompositeMode INTEGER DEFAULT NULL,
+            TextureDensity INTEGER DEFAULT NULL,
+            TextureDensityEffector BLOB DEFAULT NULL,
+            BrushMixColor INTEGER DEFAULT NULL,
+            BrushMixColorEffector BLOB DEFAULT NULL,
+            BrushBlur REAL DEFAULT NULL,
+            BrushBlurEffector BLOB DEFAULT NULL,
+            BrushUseSpray INTEGER DEFAULT NULL,
+            BrushSprayDensity INTEGER DEFAULT NULL,
+            BrushSprayDensityEffector BLOB DEFAULT NULL
+        )`);
+        
+        // Create MaterialFile table
+        db.run(`CREATE TABLE MaterialFile(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            InstallFolder INTEGER DEFAULT NULL,
+            OriginalPath TEXT DEFAULT NULL,
+            OldMaterial INTEGER DEFAULT NULL,
+            FileData BLOB DEFAULT NULL,
+            CatalogPath TEXT DEFAULT NULL,
+            MaterialUuid TEXT DEFAULT NULL
+        )`);
+        
+        log('✅ Schema created');
+        log('🎨 Creating test brush...');
+        
+        // Generate UUIDs
+        const rootUuid = generateUUID();
+        const brushUuid = generateUUID();
+        
+        // Insert Manager record
+        db.run(`INSERT INTO Manager (
+            ToolType, Version, RootUuid, MaxVariantID, SavedCount
+        ) VALUES (?, ?, ?, ?, ?)`, [
+            0,              // ToolType: 0 = brush
+            126,            // Version: CSP version
+            rootUuid,       // RootUuid
+            1,              // MaxVariantID
+            0               // SavedCount
+        ]);
+        
+        log('✅ Manager record created');
+        
+        // Insert root Node
+        db.run(`INSERT INTO Node (
+            NodeUuid, NodeName, NodeLock, NodeHidden, NodeFirstChildUuid
+        ) VALUES (?, ?, ?, ?, ?)`, [
+            rootUuid,           // NodeUuid (matches Manager.RootUuid)
+            'Test Package',     // NodeName
+            0,                  // NodeLock
+            0,                  // NodeHidden
+            brushUuid           // NodeFirstChildUuid (points to first brush)
+        ]);
+        
+        log('✅ Root node created');
+        
+        // Insert brush Node
+        db.run(`INSERT INTO Node (
+            NodeUuid, NodeName, NodeLock, NodeHidden, NodeVariantID, NodeInitVariantID
+        ) VALUES (?, ?, ?, ?, ?, ?)`, [
+            brushUuid,          // NodeUuid
+            'Test Brush',       // NodeName
+            0,                  // NodeLock
+            0,                  // NodeHidden
+            1,                  // NodeVariantID
+            1                   // NodeInitVariantID
+        ]);
+        
+        log('✅ Brush node created');
+        
+        // Create minimal brush tip pattern (16 bytes header)
+        const brushTipHeader = new Uint8Array([
+            0x00, 0x00, 0x00, 0x08,  // Header: 8
+            0x00, 0x00, 0x00, 0x01,  // Count: 1
+            0x00, 0x00, 0x00, 0x00,  // Length: 0
+            0x00, 0x00, 0x00, 0x00   // Unknown: 0
+        ]);
+        
+        // Insert Variant record
+        db.run(`INSERT INTO Variant (
+            VariantID, Opacity, AntiAlias, CompositeMode,
+            BrushSize, BrushSizeUnit, BrushFlow, BrushHardness,
+            BrushInterval, BrushThickness, BrushRotation,
+            BrushUsePatternImage, BrushPatternImageArray
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+            1,                      // VariantID
+            100,                    // Opacity (0-100)
+            1,                      // AntiAlias (1 = enabled)
+            0,                      // CompositeMode (0 = normal)
+            50.0,                   // BrushSize (pixels)
+            0,                      // BrushSizeUnit (0 = pixels)
+            100,                    // BrushFlow (0-100)
+            50,                     // BrushHardness (0-100)
+            10.0,                   // BrushInterval (spacing)
+            100,                    // BrushThickness (0-100)
+            0.0,                    // BrushRotation (degrees)
+            1,                      // BrushUsePatternImage (1 = enabled)
+            brushTipHeader          // BrushPatternImageArray
+        ]);
+        
+        log('✅ Variant record created');
+        
+        // Verify database integrity
+        const integrityCheck = db.exec('PRAGMA integrity_check');
+        if (integrityCheck[0] && integrityCheck[0].values[0][0] === 'ok') {
+            log('✅ Database integrity check passed');
+        } else {
+            log('⚠️ Database integrity check: ' + JSON.stringify(integrityCheck), 'warning');
+        }
+        
+        // Verify foreign key relationships
+        const managerCheck = db.exec('SELECT RootUuid FROM Manager');
+        const rootNodeCheck = db.exec('SELECT NodeUuid FROM Node WHERE _PW_ID = 1');
+        const brushNodeCheck = db.exec('SELECT NodeVariantID FROM Node WHERE _PW_ID = 2');
+        const variantCheck = db.exec('SELECT VariantID FROM Variant');
+        
+        log(`📊 Manager RootUuid: ${managerCheck[0].values[0][0] ? 'Set' : 'NULL'}`);
+        log(`📊 Root Node UUID: ${rootNodeCheck[0].values[0][0] ? 'Set' : 'NULL'}`);
+        log(`📊 Brush Node VariantID: ${brushNodeCheck[0].values[0][0]}`);
+        log(`📊 Variant ID: ${variantCheck[0].values[0][0]}`);
+        
+        // Export database
+        const data = db.export();
+        const blob = new Blob([data], { type: 'application/x-sqlite3' });
+        
+        // Download file
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'test_minimal.sut';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        log('✅ Test file generated: test_minimal.sut');
+        log('📥 File downloaded - ready to import into Clip Studio Paint!');
+        
+        document.getElementById('status').innerHTML = `
+            <div style="background: #d4edda; color: #155724; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                <h3>✅ Test File Generated Successfully!</h3>
+                <p><strong>File:</strong> test_minimal.sut</p>
+                <p><strong>Contents:</strong> 1 brush named "Test Brush"</p>
+                <p><strong>Settings:</strong> Size: 50px, Opacity: 100%, Hardness: 50%</p>
+                <hr style="margin: 10px 0;">
+                <h4>Next Steps:</h4>
+                <ol style="margin-left: 20px;">
+                    <li>Open Clip Studio Paint</li>
+                    <li>Go to Window → Material → Import</li>
+                    <li>Select the downloaded test_minimal.sut file</li>
+                    <li>Check if the brush appears in your Sub Tool palette</li>
+                    <li>Try drawing with the brush to test functionality</li>
+                </ol>
+            </div>
+        `;
+        
+    } catch (error) {
+        log('❌ Error: ' + error.message, 'error');
+        console.error(error);
+        document.getElementById('status').innerHTML = `
+            <div style="background: #f8d7da; color: #721c24; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                <h3>❌ Error Generating Test File</h3>
+                <p>${error.message}</p>
+            </div>
+        `;
+    }
+}
+</script>
+
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    max-width: 800px;
+    margin: 50px auto;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+}
+
+h1 {
+    color: white;
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+button {
+    display: block;
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.1em;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 20px;
+}
+
+button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.6);
+}
+
+button:disabled {
+    background: #adb5bd;
+    cursor: not-allowed;
+}
+
+#log {
+    background: #1e1e1e;
+    color: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    line-height: 1.6;
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+#status {
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+}
+</style>
+</body>
+</html>
