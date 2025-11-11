@@ -4243,6 +4243,10 @@ const BrushFixer = {
         try {
             Logger.info(`Converting ${this.currentFileType.toUpperCase()} to .sut format...`);
             
+            // Initialize abort controller for conversion
+            AppState.abortController = new AbortController();
+            AppState.converting = true;
+            
             // Create a File object from the current file data
             const file = new File([this.currentFileData], this.currentFile.name, {
                 type: this.currentFileType === 'abr' ? 'application/octet-stream' : 'application/zip'
@@ -4270,6 +4274,10 @@ const BrushFixer = {
                 BrushSettingsAutoCorrector.correctAllBrushSettings(brushes);
             }
             
+            // Set brushes in AppState for the converter
+            AppState.brushes = brushes;
+            AppState.stats.brushesParsed = brushes.length;
+            
             // Ensure template is loaded
             if (!SUT_TEMPLATE) {
                 Logger.info('Loading default template...');
@@ -4291,6 +4299,8 @@ const BrushFixer = {
             Logger.error(`Conversion failed: ${error.message}`);
             UI.showStatus(`Conversion error: ${error.message}`, 'error');
         } finally {
+            AppState.converting = false;
+            AppState.abortController = null;
             UI.showLoading(false);
         }
     },
