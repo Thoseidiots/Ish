@@ -1515,6 +1515,9 @@ const CSPSchema = {
         -- Actual CSP database schema
         PRAGMA page_size = 1024;
         PRAGMA encoding = 'UTF-8';
+        PRAGMA journal_mode = DELETE;
+        PRAGMA auto_vacuum = 0;
+        PRAGMA user_version = 0;
         
         -- Manager table (database metadata)
         CREATE TABLE Manager(
@@ -3652,14 +3655,25 @@ const TemplateManager = {
             const rootUuid = CSPUUIDGenerator.generateUuidBlob();
             
             SUT_TEMPLATE.run(`
-                INSERT INTO Manager (ToolType, Version, RootUuid, MaxVariantID, SavedCount)
-                VALUES (0, 126, ?, 1000, 0)
+                INSERT INTO Manager (
+                    ToolType, Version, RootUuid, CurrentNodeUuid,
+                    MaxVariantID, CommonVariantID, ObjectNodeUuid,
+                    PressureGraph, SavedCount
+                )
+                VALUES (0, 100, ?, NULL, 1000, NULL, NULL, NULL, 0)
             `, [rootUuid]);
             
-            // Insert root Node
+            // Insert root Node with ALL required fields
             SUT_TEMPLATE.run(`
-                INSERT INTO Node (NodeUuid, NodeName, NodeLock, NodeHidden, NodeFirstChildUuid)
-                VALUES (?, 'Root Tool', 0, 0, NULL)
+                INSERT INTO Node (
+                    NodeUuid, NodeName, NodeShortCutKey, NodeLock, NodeHidden,
+                    NodeInputOp, NodeOutputOp, NodeRangeOp,
+                    NodeIcon, NodeIconColor,
+                    NodeInstalledState, NodeInstalledVersion,
+                    NodeNextUuid, NodeFirstChildUuid, NodeSelectedUuid,
+                    NodeVariantID, NodeInitVariantID, NodeCustomIcon
+                )
+                VALUES (?, 'Root Tool', NULL, 0, 0, 10, 10, 0, 128, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
             `, [rootUuid]);
             
             AppState.templateLoaded = true;
@@ -5102,9 +5116,39 @@ const Converter = {
                     firstBrushUuid = nodeUuid;
                 }
                 
-                // Generate material UUID for brush tip reference
-                const materialUuid = brush.tipPNGs && brush.tipPNGs.length > 0 ? 
-                    CSPEncodingUtils.generateMaterialUuid() : null;
+                // Generate material UUID and insert brush tip PNG data
+                let materialUuid = null;
+                if (brush.tipPNGs && brush.tipPNGs.length > 0) {
+                    materialUuid = CSPEncodingUtils.generateMaterialUuid();
+                    
+                    // Extract and insert actual PNG data into MaterialFile table
+                    try {
+                        const tipUrl = brush.tipPNGs[0]; // Use first tip
+                        const response = await fetch(tipUrl);
+                        const blob = await response.blob();
+                        const arrayBuffer = await blob.arrayBuffer();
+                        const pngData = new Uint8Array(arrayBuffer);
+                        
+                        // Get image dimensions
+                        const img = new Image();
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = reject;
+                            img.src = tipUrl;
+                        });
+                        
+                        // Insert PNG data into MaterialFile table
+                        db.run(`
+                            INSERT INTO MaterialFile (MaterialID, FileData, Width, Height)
+                            VALUES (?, ?, ?, ?)
+                        `, [materialUuid, pngData, img.width, img.height]);
+                        
+                        Logger.info(`Embedded brush tip for ${brush.name} (${img.width}x${img.height})`);
+                    } catch (error) {
+                        Logger.warning(`Failed to embed brush tip for ${brush.name}: ${error.message}`);
+                        materialUuid = null; // Don't reference if embedding failed
+                    }
+                }
                 
                 // Get pressure curves if available
                 const sizeCurve = brush.settings.sizePressure && PressureCurveUtils.curveData.size ? 
@@ -5154,27 +5198,35 @@ const Converter = {
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [initVariantId, ...variantData]);
                 
-                // Insert Node record with proper default values
+                // Insert Node record with ALL required fields
                 db.run(`
                     INSERT INTO Node (
-                        NodeUuid, NodeName, NodeLock, NodeHidden,
+                        NodeUuid, NodeName, NodeShortCutKey, NodeLock, NodeHidden,
                         NodeInputOp, NodeOutputOp, NodeRangeOp,
                         NodeIcon, NodeIconColor,
-                        NodeNextUuid, NodeVariantID, NodeInitVariantID
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        NodeInstalledState, NodeInstalledVersion,
+                        NodeNextUuid, NodeFirstChildUuid, NodeSelectedUuid,
+                        NodeVariantID, NodeInitVariantID, NodeCustomIcon
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
                     nodeUuid,
                     brush.name,
-                    0,  // NodeLock: 0 = unlocked
-                    0,  // NodeHidden: 0 = visible
-                    10, // NodeInputOp: 10 (default)
-                    10, // NodeOutputOp: 10 (default)
-                    0,  // NodeRangeOp: 0 (default)
-                    128, // NodeIcon: 128 (default brush icon)
-                    0,  // NodeIconColor: 0 (default)
+                    NULL,  // NodeShortCutKey: NULL (no shortcut)
+                    0,     // NodeLock: 0 = unlocked
+                    0,     // NodeHidden: 0 = visible
+                    10,    // NodeInputOp: 10 (default)
+                    10,    // NodeOutputOp: 10 (default)
+                    0,     // NodeRangeOp: 0 (default)
+                    128,   // NodeIcon: 128 (default brush icon)
+                    0,     // NodeIconColor: 0 (default)
+                    NULL,  // NodeInstalledState: NULL
+                    NULL,  // NodeInstalledVersion: NULL
                     null,  // NodeNextUuid: will be updated for previous node
+                    NULL,  // NodeFirstChildUuid: NULL (leaf node)
+                    NULL,  // NodeSelectedUuid: NULL
                     variantId,
-                    initVariantId
+                    initVariantId,
+                    NULL   // NodeCustomIcon: NULL (use default)
                 ]);
                 
                 // Link previous node to this one
@@ -5219,6 +5271,11 @@ const Converter = {
         if (convertedBrushes.length === 0) {
             throw new Error('No brushes were successfully converted');
         }
+        
+        // Optimize database before export
+        Logger.info('Optimizing database...');
+        db.run('VACUUM');
+        db.run('PRAGMA integrity_check');
         
         // Export database
         const dbData = db.export();
