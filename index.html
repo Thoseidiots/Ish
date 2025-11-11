@@ -2734,7 +2734,7 @@ const FileManager = {
             // - Shape.png or Grain.png in each brush directory
             // - Brush_resolved_params.json with full brush parameters
             
-            // First pass: identify brush directories
+            // First pass: identify brush directories and collect all files
             const brushDirs = {};
             
             zipData.forEach((relativePath, zipEntry) => {
@@ -2745,16 +2745,16 @@ const FileManager = {
                         const fileName = parts[parts.length - 1];
                         
                         if (!brushDirs[brushDir]) {
-                            brushDirs[brushDir] = { pngs: [], json: null };
+                            brushDirs[brushDir] = { pngs: [], jsons: [], brushName: brushDir };
                         }
                         
                         // Look for image files (Shape.png, Grain.png, etc.)
                         if (fileName.match(/\.(png|jpg|jpeg)$/i)) {
-                            brushDirs[brushDir].pngs.push({ filename: relativePath, zipEntry });
+                            brushDirs[brushDir].pngs.push({ filename: relativePath, zipEntry, fileName });
                         }
-                        // Look for the resolved parameter file
-                        else if (fileName === 'Brush_resolved_params.json') {
-                            brushDirs[brushDir].json = zipEntry;
+                        // Look for ANY JSON files (not just Brush_resolved_params.json)
+                        else if (fileName.match(/\.json$/i)) {
+                            brushDirs[brushDir].jsons.push({ filename: relativePath, zipEntry, fileName });
                         }
                     }
                 }
@@ -2783,21 +2783,59 @@ const FileManager = {
                     
                     if (tipPNGs.length === 0) continue;
                     
-                    // 2. Extract and parse JSON parameters
+                    // 2. Extract and parse JSON parameters from all JSON files
                     let procreateParams = {};
-                    if (brushData.json) {
-                        try {
-                            const jsonText = await brushData.json.async('text');
-                            procreateParams = JSON.parse(jsonText);
-                            Logger.info(`Loaded parameters for ${brushDir}`);
-                        } catch (error) {
-                            Logger.warning(`Failed to parse JSON for ${brushDir}: ${error.message}`);
+                    let jsonLoaded = false;
+                    
+                    if (brushData.jsons.length > 0) {
+                        // Try each JSON file in order of preference
+                        const jsonPriority = [
+                            'Brush_resolved_params.json',
+                            'Brush.json',
+                            'brush.json',
+                            'parameters.json',
+                            'params.json'
+                        ];
+                        
+                        // First try priority files
+                        for (const priorityName of jsonPriority) {
+                            const jsonFile = brushData.jsons.find(j => j.fileName === priorityName);
+                            if (jsonFile) {
+                                try {
+                                    const jsonText = await jsonFile.zipEntry.async('text');
+                                    procreateParams = JSON.parse(jsonText);
+                                    Logger.info(`Loaded ${priorityName} for ${brushDir}`);
+                                    jsonLoaded = true;
+                                    break;
+                                } catch (error) {
+                                    Logger.warning(`Failed to parse ${priorityName} for ${brushDir}: ${error.message}`);
+                                }
+                            }
                         }
+                        
+                        // If no priority file worked, try any JSON file
+                        if (!jsonLoaded && brushData.jsons.length > 0) {
+                            for (const jsonFile of brushData.jsons) {
+                                try {
+                                    const jsonText = await jsonFile.zipEntry.async('text');
+                                    procreateParams = JSON.parse(jsonText);
+                                    Logger.info(`Loaded ${jsonFile.fileName} for ${brushDir}`);
+                                    jsonLoaded = true;
+                                    break;
+                                } catch (error) {
+                                    Logger.warning(`Failed to parse ${jsonFile.fileName}: ${error.message}`);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!jsonLoaded && brushData.jsons.length === 0) {
+                        Logger.info(`No JSON parameters found for ${brushDir}, using defaults`);
                     }
                     
                     // 3. Create brush object with Procreate parameters
                     const brush = {
-                        name: UI.sanitizeName(brushDir),
+                        name: UI.sanitizeName(brushData.brushName),
                         type: 'procreate',
                         tipPNGs: tipPNGs,
                         width: 512,
@@ -2806,7 +2844,9 @@ const FileManager = {
                         metadata: {
                             source: 'Procreate',
                             extractedFrom: fileName,
+                            brushDirectory: brushDir,
                             procreateMetadata: procreateParams,
+                            hasParameters: jsonLoaded,
                             dateAdded: Date.now()
                         }
                     };
