@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CSP Subtool Converter Pro - Hybrid Edition (JS + Python)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- JSZip removed - was only used for Lua script generation which is not supported -->
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px;color:#fff}
@@ -309,9 +309,24 @@ input[type=range]{width:100%;margin:10px 0}
 <input type="checkbox" id="autoCorrectSettings" checked>
 <label for="autoCorrectSettings">Auto-Correct Settings from Metadata</label>
 </div>
+<div class="checkbox-group">
+<input type="checkbox" id="useLayerEncoding">
+<label for="useLayerEncoding">🧪 Use experimental custom texture encoding (.layer format)</label>
+</div>
 </div>
 <div class="info-banner" style="margin-top:15px;background:#e3f2fd;border-color:#2196f3;">
 <strong>ℹ️ Auto-Correction:</strong> When enabled, brush settings (size, opacity, hardness, etc.) are automatically extracted from file metadata (Procreate .brushset, Photoshop .abr) for 1:1 accuracy.
+</div>
+<div class="warning-banner" id="layerEncodingWarning" style="display:none;margin-top:15px;">
+<h4>⚠️ Experimental Feature Warning</h4>
+<p>Custom texture encoding using .layer format is an experimental feature that:</p>
+<ul>
+<li>Requires Python backend to be running (port 5000)</li>
+<li>May not work with all CSP versions</li>
+<li>Could produce files that CSP rejects or renders incorrectly</li>
+<li>Automatically falls back to standard PNG method if encoding fails</li>
+</ul>
+<p><strong>Recommendation:</strong> Keep this disabled unless you're testing custom texture support. The standard method works reliably for all brushes.</p>
 </div>
 </div>
 </div>
@@ -382,6 +397,14 @@ input[type=range]{width:100%;margin:10px 0}
 <button class="btn btn-secondary" id="useAsTemplate" disabled>📋 Use as Template</button>
 </div>
 </div>
+</div>
+
+<div class="debug-panel" style="margin-top:20px;">
+<h4>🧪 Layer Encoding Statistics</h4>
+<p>Track experimental .layer format encoding attempts and success rates.</p>
+<button class="btn btn-secondary" id="showEncodingStats" style="width:auto;">📊 Show Statistics</button>
+<button class="btn btn-secondary" id="clearEncodingStats" style="width:auto;margin-left:10px;">🗑️ Clear Logs</button>
+<div id="encodingStatsDisplay" class="debug-info" style="display:none;margin-top:15px;"></div>
 </div>
 </div>
 
@@ -1038,7 +1061,8 @@ const AppState = {
     maxFileSize: 50 * 1024 * 1024, // 50MB
     maxFiles: 100,
     debugMode: false,
-    useWorker: true
+    useWorker: true,
+    useLayerEncoding: false  // Requirements: 5.2 - Default to disabled (template method)
 };
 
 // ============================================================================
@@ -1195,6 +1219,68 @@ const UI = {
         this.elements.useAsTemplate.addEventListener('click', () => {
             BrushFixer.useAsTemplate();
         });
+        
+        // Experimental layer encoding toggle
+        // Requirements: 5.2 - Show warning about experimental status
+        const useLayerEncoding = document.getElementById('useLayerEncoding');
+        const layerEncodingWarning = document.getElementById('layerEncodingWarning');
+        
+        if (useLayerEncoding && layerEncodingWarning) {
+            useLayerEncoding.addEventListener('change', () => {
+                // Requirements: 5.2 - Store preference in AppState
+                AppState.useLayerEncoding = useLayerEncoding.checked;
+                
+                // Show/hide warning
+                if (useLayerEncoding.checked) {
+                    layerEncodingWarning.style.display = 'block';
+                    Logger.info('🧪 Experimental layer encoding enabled');
+                    
+                    // Check if Python backend is available
+                    if (!PythonBackend.enabled) {
+                        UI.showStatus('⚠️ Python backend required for layer encoding. Please start the server.', 'warning');
+                    }
+                } else {
+                    layerEncodingWarning.style.display = 'none';
+                    Logger.info('Standard PNG encoding enabled');
+                }
+            });
+        }
+        
+        // Encoding statistics
+        // Requirements: 5.4 - Log all encoding attempts and results
+        const showEncodingStats = document.getElementById('showEncodingStats');
+        const clearEncodingStats = document.getElementById('clearEncodingStats');
+        const encodingStatsDisplay = document.getElementById('encodingStatsDisplay');
+        
+        if (showEncodingStats) {
+            showEncodingStats.addEventListener('click', () => {
+                const stats = LayerEncoderIntegration.getEncodingStats();
+                
+                encodingStatsDisplay.innerHTML = `
+                    <strong>📊 Encoding Statistics:</strong><br><br>
+                    Total Attempts: ${stats.total}<br>
+                    Successful: ${stats.successful} (${stats.successRate}%)<br>
+                    Failed: ${stats.failed}<br>
+                    Average Duration: ${stats.avgDuration}ms<br>
+                    <br>
+                    <small style="color:#6c757d;">
+                        Statistics are stored in session storage and reset when you close the browser.
+                    </small>
+                `;
+                encodingStatsDisplay.style.display = 'block';
+                
+                Logger.info(`Encoding stats: ${stats.successful}/${stats.total} successful (${stats.successRate}%)`);
+            });
+        }
+        
+        if (clearEncodingStats) {
+            clearEncodingStats.addEventListener('click', () => {
+                sessionStorage.removeItem('layerEncodingLogs');
+                encodingStatsDisplay.style.display = 'none';
+                Logger.info('Encoding statistics cleared');
+                UI.showStatus('Encoding statistics cleared', 'success');
+            });
+        }
 
         // Event listeners
         this.elements.oneClickConvertBtn.addEventListener('click', () => {
@@ -5218,6 +5304,792 @@ const BrushParser = {
 // ============================================================================
 // CONVERTER - CSP COMPATIBLE
 // ============================================================================
+// LAYER ENCODER INTEGRATION
+// ============================================================================
+const LayerEncoderIntegration = {
+    /**
+     * Encode texture image to .layer format using Python backend
+     * Requirements: 5.1 - Add texture encoding step before .sut generation
+     * Requirements: 5.4 - Validate encoded .layer files before embedding
+     */
+    async encodeTexture(imageBlob, options = {}) {
+        const startTime = Date.now();
+        const validationResult = {
+            success: false,
+            data: null,
+            metadata: {},
+            errors: [],
+            warnings: [],
+            duration: 0
+        };
+        
+        try {
+            // Check if Python backend is available
+            if (!PythonBackend.enabled) {
+                const error = 'Python backend not available for layer encoding';
+                Logger.warning(error);
+                validationResult.errors.push(error);
+                validationResult.warnings.push('Falling back to standard PNG method');
+                return validationResult;
+            }
+            
+            // Validate input blob
+            if (!imageBlob || imageBlob.size === 0) {
+                const error = 'Invalid or empty image blob';
+                Logger.error(error);
+                validationResult.errors.push(error);
+                return validationResult;
+            }
+            
+            // Check blob size
+            if (imageBlob.size > 10 * 1024 * 1024) {  // 10MB limit
+                const warning = `Large texture size: ${(imageBlob.size / 1024 / 1024).toFixed(2)}MB`;
+                Logger.warning(warning);
+                validationResult.warnings.push(warning);
+            }
+            
+            // Prepare form data
+            const formData = new FormData();
+            formData.append('image', imageBlob, 'texture.png');
+            formData.append('archive_type', options.archiveType || 'tar');
+            formData.append('compression', options.compression || 'none');
+            formData.append('validate', options.validate !== false ? 'true' : 'false');
+            
+            // Send to Python backend
+            Logger.info('Encoding texture to .layer format...');
+            const response = await fetch('http://localhost:5000/api/python/encode_layer', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                const errorMsg = error.error || 'Layer encoding failed';
+                Logger.error(`❌ Encoding failed: ${errorMsg}`);
+                validationResult.errors.push(errorMsg);
+                
+                // Add detailed errors if available
+                if (error.errors && Array.isArray(error.errors)) {
+                    validationResult.errors.push(...error.errors);
+                }
+                if (error.warnings && Array.isArray(error.warnings)) {
+                    validationResult.warnings.push(...error.warnings);
+                }
+                
+                // Requirements: 5.4 - Show detailed error messages
+                UI.showStatus(`Layer encoding failed: ${errorMsg}. Using standard PNG method.`, 'warning');
+                return validationResult;
+            }
+            
+            // Get encoded .layer data
+            const layerData = await response.arrayBuffer();
+            const layerBytes = new Uint8Array(layerData);
+            
+            // Get metadata from headers
+            const metadata = {
+                size: parseInt(response.headers.get('X-Layer-Size') || '0'),
+                archiveType: response.headers.get('X-Layer-Archive-Type') || 'unknown',
+                valid: response.headers.get('X-Layer-Valid') === 'true'
+            };
+            
+            // Requirements: 5.4 - Validate encoded .layer files before embedding
+            const validation = await this.validateEncodedLayer(layerBytes, metadata);
+            
+            if (!validation.valid) {
+                Logger.error('❌ Encoded .layer file failed validation');
+                validationResult.errors.push('Encoded .layer file failed validation');
+                validationResult.errors.push(...validation.errors);
+                validationResult.warnings.push(...validation.warnings);
+                
+                // Requirements: 5.4 - Show detailed error messages
+                UI.showStatus('Layer encoding validation failed. Using standard PNG method.', 'warning');
+                return validationResult;
+            }
+            
+            // Success!
+            validationResult.success = true;
+            validationResult.data = layerBytes;
+            validationResult.metadata = metadata;
+            validationResult.warnings.push(...validation.warnings);
+            validationResult.duration = Date.now() - startTime;
+            
+            Logger.success(`✅ Texture encoded to .layer format (${metadata.size} bytes, ${metadata.archiveType}, ${validationResult.duration}ms)`);
+            
+            // Requirements: 5.4 - Log all encoding attempts and results
+            this.logEncodingAttempt({
+                success: true,
+                size: metadata.size,
+                archiveType: metadata.archiveType,
+                duration: validationResult.duration,
+                warnings: validationResult.warnings.length
+            });
+            
+            return validationResult;
+            
+        } catch (error) {
+            const errorMsg = `Layer encoding exception: ${error.message}`;
+            Logger.error(errorMsg);
+            validationResult.errors.push(errorMsg);
+            validationResult.duration = Date.now() - startTime;
+            
+            // Requirements: 5.4 - Log all encoding attempts and results
+            this.logEncodingAttempt({
+                success: false,
+                error: error.message,
+                duration: validationResult.duration
+            });
+            
+            // Requirements: 5.4 - Automatically fall back to template method on failure
+            Logger.info('⚠️ Falling back to standard PNG method');
+            UI.showStatus('Layer encoding error. Using standard PNG method.', 'warning');
+            
+            return validationResult;
+        }
+    },
+    
+    /**
+     * Validate encoded .layer file
+     * Requirements: 5.4 - Validate encoded .layer files before embedding in .sut
+     */
+    async validateEncodedLayer(layerBytes, metadata) {
+        const validation = {
+            valid: true,
+            errors: [],
+            warnings: []
+        };
+        
+        try {
+            // Check size
+            if (layerBytes.length === 0) {
+                validation.valid = false;
+                validation.errors.push('Encoded .layer file is empty');
+                return validation;
+            }
+            
+            if (layerBytes.length !== metadata.size) {
+                validation.warnings.push(`Size mismatch: data=${layerBytes.length}, metadata=${metadata.size}`);
+            }
+            
+            // Check magic bytes based on archive type
+            if (metadata.archiveType === 'tar') {
+                // TAR files should have 'ustar' at offset 257
+                if (layerBytes.length < 262) {
+                    validation.valid = false;
+                    validation.errors.push('TAR file too small (< 262 bytes)');
+                    return validation;
+                }
+                
+                const ustarCheck = String.fromCharCode(...layerBytes.slice(257, 262));
+                if (!ustarCheck.includes('ustar')) {
+                    validation.valid = false;
+                    validation.errors.push('Invalid TAR magic bytes (missing "ustar" at offset 257)');
+                    return validation;
+                }
+            } else if (metadata.archiveType === 'zip') {
+                // ZIP files should start with 'PK\x03\x04'
+                if (layerBytes.length < 4) {
+                    validation.valid = false;
+                    validation.errors.push('ZIP file too small (< 4 bytes)');
+                    return validation;
+                }
+                
+                if (layerBytes[0] !== 0x50 || layerBytes[1] !== 0x4B || 
+                    layerBytes[2] !== 0x03 || layerBytes[3] !== 0x04) {
+                    validation.valid = false;
+                    validation.errors.push('Invalid ZIP magic bytes (expected PK\\x03\\x04)');
+                    return validation;
+                }
+            }
+            
+            // Check if metadata indicates validity
+            if (!metadata.valid) {
+                validation.warnings.push('Metadata indicates file may not be valid');
+            }
+            
+            Logger.info(`✅ Layer validation passed: ${metadata.archiveType} format, ${layerBytes.length} bytes`);
+            
+        } catch (error) {
+            validation.valid = false;
+            validation.errors.push(`Validation exception: ${error.message}`);
+        }
+        
+        return validation;
+    },
+    
+    /**
+     * Log encoding attempt for debugging and analytics
+     * Requirements: 5.4 - Log all encoding attempts and results
+     */
+    logEncodingAttempt(result) {
+        // Store in session storage for debugging
+        try {
+            const logs = JSON.parse(sessionStorage.getItem('layerEncodingLogs') || '[]');
+            logs.push({
+                timestamp: new Date().toISOString(),
+                ...result
+            });
+            
+            // Keep only last 50 logs
+            if (logs.length > 50) {
+                logs.shift();
+            }
+            
+            sessionStorage.setItem('layerEncodingLogs', JSON.stringify(logs));
+        } catch (error) {
+            // Ignore storage errors
+        }
+    },
+    
+    /**
+     * Get encoding statistics
+     */
+    getEncodingStats() {
+        try {
+            const logs = JSON.parse(sessionStorage.getItem('layerEncodingLogs') || '[]');
+            const total = logs.length;
+            const successful = logs.filter(l => l.success).length;
+            const failed = total - successful;
+            const avgDuration = total > 0 ? 
+                logs.reduce((sum, l) => sum + (l.duration || 0), 0) / total : 0;
+            
+            return {
+                total,
+                successful,
+                failed,
+                successRate: total > 0 ? (successful / total * 100).toFixed(1) : 0,
+                avgDuration: avgDuration.toFixed(0)
+            };
+        } catch (error) {
+            return { total: 0, successful: 0, failed: 0, successRate: 0, avgDuration: 0 };
+        }
+    },
+    
+    /**
+     * Check if layer encoding is available and enabled
+     * Requirements: 5.2 - Check experimental feature toggle
+     */
+    isAvailable() {
+        // Check if Python backend is available
+        if (!PythonBackend.enabled) {
+            return false;
+        }
+        
+        // Check if experimental feature is enabled (will be added in task 5.2)
+        const useLayerEncoding = document.getElementById('useLayerEncoding');
+        if (useLayerEncoding && !useLayerEncoding.checked) {
+            return false;
+        }
+        
+        return true;
+    },
+    
+    /**
+     * Show texture preview with original and encoded comparison
+     * Requirements: 5.3 - Display original texture and encoded texture preview
+     */
+    async showTexturePreview(originalBlob, encodedLayerData, brushName) {
+        try {
+            // Create preview container if it doesn't exist
+            let previewContainer = document.getElementById('layerEncodingPreview');
+            if (!previewContainer) {
+                previewContainer = document.createElement('div');
+                previewContainer.id = 'layerEncodingPreview';
+                previewContainer.className = 'validation-report';
+                previewContainer.style.marginTop = '15px';
+                
+                // Insert after the layer encoding warning
+                const warning = document.getElementById('layerEncodingWarning');
+                if (warning && warning.parentNode) {
+                    warning.parentNode.insertBefore(previewContainer, warning.nextSibling);
+                }
+            }
+            
+            // Create preview HTML
+            const originalUrl = URL.createObjectURL(originalBlob);
+            MemoryManager.addBlobUrl(originalUrl);
+            
+            let previewHTML = `
+                <h5>🔍 Texture Encoding Preview: ${brushName}</h5>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:10px;">
+                    <div style="text-align:center;">
+                        <strong>Original Texture</strong>
+                        <div style="background:#f8f9fa;padding:10px;border-radius:5px;margin-top:5px;">
+                            <img src="${originalUrl}" style="max-width:100%;height:auto;border:1px solid #dee2e6;" alt="Original">
+                        </div>
+                        <small style="color:#6c757d;">PNG format</small>
+                    </div>
+            `;
+            
+            // Try to decode the encoded .layer data to show preview
+            if (encodedLayerData) {
+                try {
+                    // Send to Python backend for decoding
+                    const formData = new FormData();
+                    formData.append('layer_data', new Blob([encodedLayerData]), 'texture.layer');
+                    
+                    const response = await fetch('http://localhost:5000/api/python/decode_layer', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (response.ok) {
+                        const decodedBlob = await response.blob();
+                        const decodedUrl = URL.createObjectURL(decodedBlob);
+                        MemoryManager.addBlobUrl(decodedUrl);
+                        
+                        // Get quality metrics from headers
+                        const similarity = response.headers.get('X-Similarity-Score') || 'N/A';
+                        const matchQuality = response.headers.get('X-Match-Quality') || 'unknown';
+                        
+                        // Requirements: 5.3 - Highlight any differences or quality loss
+                        let qualityClass = 'validation-pass';
+                        let qualityIcon = '✅';
+                        if (matchQuality === 'poor' || matchQuality === 'fair') {
+                            qualityClass = 'validation-warn';
+                            qualityIcon = '⚠️';
+                        }
+                        
+                        previewHTML += `
+                            <div style="text-align:center;">
+                                <strong>Encoded & Decoded</strong>
+                                <div style="background:#f8f9fa;padding:10px;border-radius:5px;margin-top:5px;">
+                                    <img src="${decodedUrl}" style="max-width:100%;height:auto;border:1px solid #dee2e6;" alt="Decoded">
+                                </div>
+                                <small style="color:#6c757d;">.layer format (TAR archive)</small>
+                                <div class="${qualityClass}" style="margin-top:5px;padding:5px;border-radius:3px;">
+                                    ${qualityIcon} Quality: ${matchQuality.toUpperCase()}
+                                    ${similarity !== 'N/A' ? `<br>Similarity: ${similarity}%` : ''}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        previewHTML += `
+                            <div style="text-align:center;">
+                                <strong>Encoded & Decoded</strong>
+                                <div style="background:#f8f9fa;padding:10px;border-radius:5px;margin-top:5px;">
+                                    <p style="color:#6c757d;padding:20px;">Preview unavailable<br>(decoding failed)</p>
+                                </div>
+                                <small style="color:#6c757d;">.layer format</small>
+                            </div>
+                        `;
+                    }
+                } catch (error) {
+                    Logger.warning(`Preview decoding failed: ${error.message}`);
+                    previewHTML += `
+                        <div style="text-align:center;">
+                            <strong>Encoded & Decoded</strong>
+                            <div style="background:#f8f9fa;padding:10px;border-radius:5px;margin-top:5px;">
+                                <p style="color:#6c757d;padding:20px;">Preview unavailable<br>(${error.message})</p>
+                            </div>
+                            <small style="color:#6c757d;">.layer format</small>
+                        </div>
+                    `;
+                }
+            }
+            
+            previewHTML += `
+                </div>
+                <div style="margin-top:10px;padding:10px;background:#e7f3ff;border-radius:5px;">
+                    <small>
+                        <strong>ℹ️ Note:</strong> The encoded texture is stored in CSP's .layer format (TAR archive containing PNG).
+                        CSP will extract and render the texture when you use the brush.
+                    </small>
+                </div>
+            `;
+            
+            previewContainer.innerHTML = previewHTML;
+            previewContainer.style.display = 'block';
+            
+        } catch (error) {
+            Logger.error(`Failed to show texture preview: ${error.message}`);
+        }
+    },
+    
+    /**
+     * Clear texture preview
+     */
+    clearTexturePreview() {
+        const previewContainer = document.getElementById('layerEncodingPreview');
+        if (previewContainer) {
+            previewContainer.style.display = 'none';
+            previewContainer.innerHTML = '';
+        }
+    }
+};
+
+// ============================================================================
+// CSP SCRIPT GENERATOR - DISABLED (CSP has no Lua API)
+// ============================================================================
+// Note: CSP does not support Lua scripting for brush creation
+// This module has been disabled based on official SDK analysis
+/*
+const CSPScriptGenerator = {
+    /**
+     * Generate CSP-compatible Lua script for brush import
+     * Requirements: 7.1, 7.3
+     */
+    generateImportScript(brushes, options = {}) {
+        const packageName = options.packageName || 'Imported_Brushes';
+        const author = options.author || 'Unknown';
+        
+        // Generate Lua script with error handling and user feedback
+        const script = `-- CSP Brush Import Script
+-- Generated by CSP Subtool Converter Pro
+-- Package: ${packageName}
+-- Author: ${author}
+-- Generated: ${new Date().toISOString()}
+
+-- Load JSON library (CSP includes this)
+local json = require("json")
+
+-- Error handling wrapper
+local function safeExecute(func, errorMsg)
+    local success, result = pcall(func)
+    if not success then
+        app.messageBox(errorMsg .. "\\n\\nError: " .. tostring(result), "Import Error", "error")
+        return false
+    end
+    return true, result
+end
+
+-- Main import function
+local function importBrushes()
+    -- Show progress dialog
+    app.messageBox("Starting brush import...\\n\\nThis may take a moment.", "Import Progress", "info")
+    
+    -- Load brush settings from JSON
+    local settingsFile = app.fs.pathJoin(app.fs.scriptPath(), "brush_settings.json")
+    local settingsData = nil
+    
+    safeExecute(function()
+        local file = io.open(settingsFile, "r")
+        if not file then
+            error("Could not open brush_settings.json")
+        end
+        local content = file:read("*all")
+        file:close()
+        settingsData = json.decode(content)
+    end, "Failed to load brush settings")
+    
+    if not settingsData then
+        return false
+    end
+    
+    -- Import each brush
+    local successCount = 0
+    local failCount = 0
+    local errors = {}
+    
+    for i, brushData in ipairs(settingsData.brushes) do
+        local success = safeExecute(function()
+            -- Load brush tip image
+            local tipPath = app.fs.pathJoin(app.fs.scriptPath(), brushData.tipFile)
+            
+            -- Create new brush tool
+            local brush = app.tool.createBrush()
+            
+            -- Set brush name
+            brush:setName(brushData.name)
+            
+            -- Set brush tip from PNG file
+            brush:setTipImage(tipPath)
+            
+            -- Apply brush settings
+            if brushData.settings then
+                if brushData.settings.size then
+                    brush:setSize(brushData.settings.size)
+                end
+                if brushData.settings.opacity then
+                    brush:setOpacity(brushData.settings.opacity)
+                end
+                if brushData.settings.hardness then
+                    brush:setHardness(brushData.settings.hardness)
+                end
+                if brushData.settings.spacing then
+                    brush:setSpacing(brushData.settings.spacing)
+                end
+                if brushData.settings.angle then
+                    brush:setAngle(brushData.settings.angle)
+                end
+                if brushData.settings.density then
+                    brush:setDensity(brushData.settings.density)
+                end
+                
+                -- Pressure sensitivity settings
+                if brushData.settings.sizePressure then
+                    brush:enableSizePressure(true)
+                end
+                if brushData.settings.opacityPressure then
+                    brush:enableOpacityPressure(true)
+                end
+                if brushData.settings.densityPressure then
+                    brush:enableDensityPressure(true)
+                end
+            end
+            
+            -- Save brush to tool palette
+            brush:save()
+            
+        end, "Failed to import brush: " .. (brushData.name or "Unknown"))
+        
+        if success then
+            successCount = successCount + 1
+        else
+            failCount = failCount + 1
+            table.insert(errors, brushData.name or "Unknown")
+        end
+    end
+    
+    -- Show completion message
+    local message = string.format(
+        "Brush import completed!\\n\\n" ..
+        "✅ Successfully imported: %d\\n" ..
+        "❌ Failed: %d",
+        successCount, failCount
+    )
+    
+    if failCount > 0 then
+        message = message .. "\\n\\nFailed brushes:\\n" .. table.concat(errors, "\\n")
+    end
+    
+    app.messageBox(message, "Import Complete", failCount > 0 and "warning" or "info")
+    
+    return true
+end
+
+-- Execute import
+importBrushes()
+`;
+        
+        return script;
+    },
+    
+    /**
+     * Export brush parameters as JSON file
+     * Requirements: 7.3
+     */
+    exportBrushSettings(brushes) {
+        const settings = {
+            version: "1.0",
+            generator: "CSP Subtool Converter Pro",
+            generated: new Date().toISOString(),
+            brushes: []
+        };
+        
+        for (let i = 0; i < brushes.length; i++) {
+            const brush = brushes[i];
+            
+            // Structure data for easy Lua parsing
+            const brushData = {
+                name: brush.name || `Brush_${i + 1}`,
+                tipFile: `tips/${brush.name || `brush_${i + 1}`}.png`,
+                settings: {
+                    size: brush.settings.size || 50,
+                    opacity: brush.settings.opacity || 100,
+                    hardness: brush.settings.hardness || 100,
+                    spacing: brush.settings.spacing || 10,
+                    angle: brush.settings.angle || 0,
+                    density: brush.settings.density || 100,
+                    smoothing: brush.settings.smoothing || 0,
+                    stabilization: brush.settings.stabilization || 0,
+                    sizePressure: brush.settings.sizePressure || false,
+                    opacityPressure: brush.settings.opacityPressure || false,
+                    densityPressure: brush.settings.densityPressure || false,
+                    antiAliasing: brush.settings.antiAliasing !== false,
+                    textureMode: brush.settings.textureMode || false
+                },
+                metadata: {
+                    width: brush.width || 512,
+                    height: brush.height || 512,
+                    type: brush.type || 'image',
+                    source: brush.source || 'unknown'
+                }
+            };
+            
+            settings.brushes.push(brushData);
+        }
+        
+        // Validate JSON format
+        try {
+            JSON.stringify(settings);
+            return settings;
+        } catch (error) {
+            Logger.error(`Failed to validate JSON format: ${error.message}`);
+            throw new Error('Invalid JSON structure');
+        }
+    },
+    
+    /**
+     * Create README with installation instructions
+     */
+    generateReadme(packageName, brushCount) {
+        return `# ${packageName} - CSP Brush Import Package
+
+## Installation Instructions
+
+This package contains brushes converted for Clip Studio Paint using the CSP Script Import method.
+
+### Contents
+
+- \`import_brushes.lua\` - Main import script
+- \`brush_settings.json\` - Brush configuration data
+- \`tips/\` - Brush tip PNG images
+- \`README.md\` - This file
+
+### How to Install
+
+1. **Extract this ZIP file** to a location on your computer
+
+2. **Open Clip Studio Paint**
+
+3. **Run the import script:**
+   - Go to **File > Script > Run Script...**
+   - Navigate to the extracted folder
+   - Select \`import_brushes.lua\`
+   - Click **Open**
+
+4. **Wait for import to complete**
+   - A progress dialog will appear
+   - The script will import all ${brushCount} brush(es)
+   - A completion message will show the results
+
+5. **Find your brushes:**
+   - Imported brushes will appear in your Tool Palette
+   - You can organize them into custom folders
+
+### Troubleshooting
+
+**Script won't run:**
+- Make sure you're using Clip Studio Paint 1.9.0 or later
+- Check that scripting is enabled in CSP preferences
+- Verify all files were extracted from the ZIP
+
+**Brushes don't import:**
+- Check that the \`tips/\` folder contains all PNG files
+- Verify \`brush_settings.json\` is in the same folder as the script
+- Look for error messages in the CSP script console
+
+**Brush settings are wrong:**
+- You can manually adjust brush settings after import
+- Edit \`brush_settings.json\` before running the script to customize
+
+### Support
+
+For issues or questions, visit:
+https://github.com/your-repo/csp-converter
+
+### Notes
+
+- This is an alternative import method that doesn't require .sut files
+- Brushes are imported as native CSP tools
+- You can re-run the script to import again if needed
+- Original brush tip images are preserved in the \`tips/\` folder
+
+Generated by CSP Subtool Converter Pro
+${new Date().toISOString()}
+`;
+    },
+    
+    /**
+     * Package Lua script, JSON settings, and PNG tips into ZIP
+     * Requirements: 7.3
+     */
+    async packageForCSP(brushes, options = {}) {
+        if (!window.JSZip) {
+            throw new Error('JSZip library not loaded');
+        }
+        
+        const packageName = options.packageName || 'CSP_Brush_Package';
+        const author = options.author || 'Unknown';
+        
+        Logger.info(`Creating CSP script package: ${packageName}`);
+        
+        try {
+            const zip = new JSZip();
+            
+            // 1. Generate and add Lua script
+            const luaScript = this.generateImportScript(brushes, { packageName, author });
+            zip.file('import_brushes.lua', luaScript);
+            Logger.info('Added import_brushes.lua to package');
+            
+            // 2. Generate and add brush settings JSON
+            const settingsJson = this.exportBrushSettings(brushes);
+            zip.file('brush_settings.json', JSON.stringify(settingsJson, null, 2));
+            Logger.info('Added brush_settings.json to package');
+            
+            // 3. Add README with installation instructions
+            const readme = this.generateReadme(packageName, brushes.length);
+            zip.file('README.md', readme);
+            Logger.info('Added README.md to package');
+            
+            // 4. Create tips folder and add PNG brush tips
+            const tipsFolder = zip.folder('tips');
+            
+            for (let i = 0; i < brushes.length; i++) {
+                const brush = brushes[i];
+                
+                if (brush.tipPNGs && brush.tipPNGs.length > 0) {
+                    try {
+                        // Get the first tip PNG
+                        const tipUrl = brush.tipPNGs[0];
+                        const response = await fetch(tipUrl);
+                        const blob = await response.blob();
+                        
+                        // Generate user-friendly file name
+                        const fileName = `${brush.name || `brush_${i + 1}`}.png`;
+                        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+                        
+                        tipsFolder.file(sanitizedFileName, blob);
+                        Logger.info(`Added tip: ${sanitizedFileName}`);
+                    } catch (error) {
+                        Logger.warning(`Failed to add tip for ${brush.name}: ${error.message}`);
+                    }
+                }
+            }
+            
+            // 5. Generate ZIP file
+            Logger.info('Generating ZIP archive...');
+            const zipBlob = await zip.generateAsync({
+                type: 'blob',
+                compression: 'DEFLATE',
+                compressionOptions: { level: 6 }
+            });
+            
+            Logger.success(`Package created: ${packageName}.zip (${(zipBlob.size / 1024).toFixed(2)} KB)`);
+            
+            return {
+                success: true,
+                blob: zipBlob,
+                filename: `${packageName}_CSP_Script.zip`,
+                size: zipBlob.size,
+                brushCount: brushes.length
+            };
+            
+        } catch (error) {
+            Logger.error(`Failed to create package: ${error.message}`);
+            throw error;
+        }
+    },
+    
+    /**
+     * Download the generated package
+     */
+    downloadPackage(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        Logger.success(`Downloaded: ${filename}`);
+    }
+};
+*/
+
+// ============================================================================
 const Converter = {
     async convertAll() {
         if (AppState.converting) {
@@ -5345,6 +6217,7 @@ const Converter = {
                 // Generate material UUID and insert brush tip PNG data
                 let materialUuid = null;
                 let pngData = null;  // Declare outside try block so it's available for BrushPatternImageArray
+                let layerData = null;  // Encoded .layer data (if using experimental feature)
                 Logger.info(`Brush ${brush.name}: tipPNGs=${brush.tipPNGs ? brush.tipPNGs.length : 'null'}`);
                 if (brush.tipPNGs && brush.tipPNGs.length > 0) {
                     materialUuid = CSPEncodingUtils.generateMaterialUuid();
@@ -5366,12 +6239,60 @@ const Converter = {
                             img.src = tipUrl;
                         });
                         
+                        // Requirements: 5.1 - Add texture encoding step before .sut generation
+                        // Requirements: 5.4 - Validate and handle encoding errors with fallback
+                        // Try to encode texture to .layer format if experimental feature is enabled
+                        if (LayerEncoderIntegration.isAvailable()) {
+                            Logger.info(`Attempting experimental .layer encoding for ${brush.name}...`);
+                            const encodingResult = await LayerEncoderIntegration.encodeTexture(blob, {
+                                archiveType: 'tar',
+                                compression: 'none',
+                                validate: true
+                            });
+                            
+                            // Requirements: 5.4 - Show detailed error messages if encoding fails
+                            if (encodingResult.success && encodingResult.data) {
+                                layerData = encodingResult.data;
+                                Logger.success(`✅ Experimental: Encoded ${brush.name} to .layer format (${encodingResult.metadata.size} bytes)`);
+                                
+                                // Log warnings if any
+                                if (encodingResult.warnings.length > 0) {
+                                    encodingResult.warnings.forEach(warning => {
+                                        Logger.warning(`⚠️ ${warning}`);
+                                    });
+                                }
+                                
+                                // Requirements: 5.3 - Show encoded texture preview
+                                // Show preview for the first brush only (to avoid UI clutter)
+                                if (i === 0) {
+                                    await LayerEncoderIntegration.showTexturePreview(blob, layerData, brush.name);
+                                }
+                            } else {
+                                // Requirements: 5.4 - Automatically fall back to template method on failure
+                                Logger.warning(`⚠️ Experimental: Layer encoding failed for ${brush.name}, falling back to PNG`);
+                                
+                                // Log detailed errors
+                                if (encodingResult.errors.length > 0) {
+                                    encodingResult.errors.forEach(error => {
+                                        Logger.error(`  ❌ ${error}`);
+                                    });
+                                }
+                                
+                                // layerData remains null, so PNG will be used
+                            }
+                        }
+                        
+                        // Requirements: 5.1 - Embed encoded .layer data in MaterialFile table
+                        // Use encoded .layer data if available, otherwise use PNG
+                        const fileData = layerData || pngData;
+                        const dataType = layerData ? '.layer' : 'PNG';
+                        
                         // CRITICAL: Insert brush tip into MaterialFile table
                         // CSP requires the actual image data in MaterialFile, not just in BrushPatternImageArray
                         const originalPath = `.${materialUuid}:data:material_0.layer`;
                         const catalogPath = `.${materialUuid}`;
                         
-                        Logger.info(`About to INSERT into MaterialFile: _PW_ID=${i + 1}, pngData.length=${pngData.length}`);
+                        Logger.info(`About to INSERT into MaterialFile: _PW_ID=${i + 1}, fileData.length=${fileData.length}, type=${dataType}`);
                         
                         db.run(`
                             INSERT INTO MaterialFile (
@@ -5382,14 +6303,14 @@ const Converter = {
                             0,               // InstallFolder
                             originalPath,    // OriginalPath
                             0,               // OldMaterial
-                            pngData,         // FileData (actual PNG bytes)
+                            fileData,        // FileData (encoded .layer or PNG bytes)
                             catalogPath,     // CatalogPath
                             ''               // MaterialUuid (empty string)
                         ]);
                         
                         Logger.info(`INSERT completed successfully`);
                         
-                        Logger.info(`Inserted brush tip for ${brush.name} into MaterialFile (${img.width}x${img.height}, ${pngData.length} bytes)`);
+                        Logger.info(`Inserted brush tip for ${brush.name} into MaterialFile (${img.width}x${img.height}, ${fileData.length} bytes, ${dataType})`);
                     } catch (error) {
                         Logger.warning(`Failed to embed brush tip for ${brush.name}: ${error.message}`);
                         materialUuid = null; // Don't reference if embedding failed
@@ -5426,10 +6347,18 @@ const Converter = {
                 }
                 */
                 
-                // CRITICAL: Create COMPLETE BrushPatternImageArray with embedded PNG data
-                // CSP requires: header + material reference + type/flags + brush name + PNG bytes
-                if (materialUuid && pngData) {
+                // CRITICAL: Create COMPLETE BrushPatternImageArray with embedded texture data
+                // Requirements: 5.1 - Update BrushPatternImageArray to reference custom texture
+                // CSP requires: header + material reference + type/flags + brush name + texture bytes
+                // The texture can be either PNG or .layer format - both are embedded in MaterialFile
+                if (materialUuid && (pngData || layerData)) {
+                    // Use the actual texture data that was embedded in MaterialFile
+                    // This ensures BrushPatternImageArray references the same data format
+                    const textureData = layerData || pngData;
+                    const textureType = layerData ? '.layer' : 'PNG';
+                    
                     // 1. Create material reference string (UTF-16LE)
+                    // This references the MaterialFile entry we created above
                     const materialRef = `.:12:45:${materialUuid}:data:material_0.layer`;
                     const materialRefBytes = CSPEncodingUtils.encodeUTF16LE(materialRef);
                     
@@ -5443,8 +6372,9 @@ const Converter = {
                     const brushNameBytes = CSPEncodingUtils.encodeUTF16LE(brush.name);
                     
                     // 4. Calculate data length (everything after 16-byte header)
+                    // Include the actual texture data (PNG or .layer format)
                     const dataLength = materialRefBytes.length + typeFlags.length + 
-                                     brushNameBytes.length + pngData.length;
+                                     brushNameBytes.length + textureData.length;
                     
                     // 5. Create 16-byte header (big-endian)
                     const header = new Uint8Array(16);
@@ -5467,11 +6397,11 @@ const Converter = {
                     offset += typeFlags.length;
                     patternArray.set(brushNameBytes, offset);
                     offset += brushNameBytes.length;
-                    patternArray.set(pngData, offset);
+                    patternArray.set(textureData, offset);
                     
                     variantData.BrushPatternImageArray = patternArray;
                     
-                    Logger.info(`Created BrushPatternImageArray: ${totalSize} bytes (header:16 + ref:${materialRefBytes.length} + flags:8 + name:${brushNameBytes.length} + png:${pngData.length})`);
+                    Logger.info(`Created BrushPatternImageArray: ${totalSize} bytes (header:16 + ref:${materialRefBytes.length} + flags:8 + name:${brushNameBytes.length} + texture:${textureData.length} [${textureType}])`);
                 }
                 
                 // Build column list and values array (all 106 fields)
@@ -5586,11 +6516,15 @@ const Converter = {
     },
     
     async convertToPNG() {
-        Logger.info('Exporting brush tip PNGs...');
+        Logger.info('Exporting brush tip PNGs + settings JSON...');
         
         const zip = new JSZip();
         const packageName = UI.sanitizeName(document.getElementById('packageName').value);
         let exportedCount = 0;
+        const brushSettings = [];
+        
+        // Create brush_tips folder in ZIP
+        const tipsFolder = zip.folder('brush_tips');
         
         for (let i = 0; i < AppState.brushes.length; i++) {
             const brush = AppState.brushes[i];
@@ -5605,14 +6539,36 @@ const Converter = {
                     const response = await fetch(brush.tipPNGs[0]);
                     const blob = await response.blob();
                     
-                    zip.file(`${brush.name}.png`, blob);
+                    const filename = `${brush.name}.png`;
+                    tipsFolder.file(filename, blob);
+                    
+                    // Collect brush settings for JSON
+                    brushSettings.push({
+                        name: brush.name,
+                        tipFile: `brush_tips/${filename}`,
+                        settings: {
+                            size: brush.settings.size || 50,
+                            opacity: brush.settings.opacity || 100,
+                            spacing: brush.settings.spacing || 10,
+                            hardness: brush.settings.hardness || 50,
+                            angle: brush.settings.angle || 0,
+                            sizePressure: brush.settings.sizePressure || false,
+                            opacityPressure: brush.settings.opacityPressure || false,
+                            blendMode: brush.settings.blendMode || 'normal'
+                        },
+                        dimensions: {
+                            width: brush.width,
+                            height: brush.height
+                        }
+                    });
+                    
                     exportedCount++;
                 }
                 
                 // Update progress
                 const progress = Math.round(((i + 1) / AppState.brushes.length) * 100);
                 UI.showProgress(progress);
-                UI.showStatus(`Exporting PNG ${i + 1}/${AppState.brushes.length}: ${brush.name}`, 'info');
+                UI.showStatus(`Exporting ${i + 1}/${AppState.brushes.length}: ${brush.name}`, 'info');
                 
             } catch (error) {
                 Logger.error(`Failed to export ${brush.name}: ${error.message}`);
@@ -5623,11 +6579,66 @@ const Converter = {
             throw new Error('No PNG files to export');
         }
         
+        // Create brush_settings.json
+        const settingsJSON = {
+            version: '1.0',
+            exportDate: new Date().toISOString().split('T')[0],
+            packageName: packageName,
+            totalBrushes: exportedCount,
+            brushes: brushSettings
+        };
+        
+        zip.file('brush_settings.json', JSON.stringify(settingsJSON, null, 2));
+        
+        // Create README with instructions
+        const readme = `# ${packageName} - Brush Tips Export
+
+## Contents
+- brush_tips/ - PNG files for each brush tip
+- brush_settings.json - Settings for each brush
+
+## How to Import into Clip Studio Paint
+
+### Step 1: Import Materials
+1. Open Clip Studio Paint
+2. Go to: Window → Material → Image Material
+3. Drag all PNG files from the brush_tips/ folder into the Material window
+4. They will be registered as materials
+
+### Step 2: Create Brushes
+For each brush in brush_settings.json:
+
+1. Select any brush tool
+2. Go to: Tool Property → Brush Tip → Material
+3. Select the corresponding material (match the name)
+4. Apply settings from JSON:
+   - Size: Brush Size
+   - Spacing: Brush Tip Spacing
+   - Opacity: Opacity
+   - Hardness: Hardness
+   - Angle: Angle
+   - Pressure: Enable size/opacity pressure if specified
+
+5. Save as preset:
+   - Tool Property → Register all settings to preset
+   - Name it according to the brush name in JSON
+
+### Step 3: Share (Optional)
+- Export your brush presets: File → Export → Tool Settings
+- Share the .sut file with proper material references
+
+## Exported: ${new Date().toLocaleString()}
+## Total Brushes: ${exportedCount}
+`;
+        
+        zip.file('README.txt', readme);
+        
         // Generate ZIP
+        Logger.info('Generating ZIP file...');
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         
         // Download
-        const filename = `${packageName.replace(/[^a-zA-Z0-9]/g, '_')}_tips.zip`;
+        const filename = `${packageName.replace(/[^a-zA-Z0-9]/g, '_')}_brushes.zip`;
         const url = URL.createObjectURL(zipBlob);
         MemoryManager.addBlobUrl(url);
         
@@ -5639,9 +6650,11 @@ const Converter = {
         AppState.stats.brushesConverted = exportedCount;
         UI.updateStats();
         
-        Logger.success(`ZIP created: ${filename} (${exportedCount} PNGs)`);
-        UI.showStatus(`Successfully exported ${exportedCount} PNG files`, 'success');
+        Logger.success(`ZIP created: ${filename} (${exportedCount} brushes + settings JSON + README)`);
+        UI.showStatus(`Successfully exported ${exportedCount} brushes with settings`, 'success');
     },
+    
+
     
     async runDebugConversion() {
         Logger.info('Running debug analysis...');
