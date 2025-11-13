@@ -156,6 +156,14 @@ input[type=range]{width:100%;margin:10px 0}
 <li>✅ Enhanced CSP schema validation</li>
 <li>✅ Professional-grade error handling</li>
 </ul>
+<div id="pythonStartupInstructions" style="background:#fff3cd;border:2px solid #ffc107;border-radius:8px;padding:15px;margin-top:15px;color:#856404;display:none">
+<h4 style="margin-bottom:10px;color:#856404">⚡ Quick Start - Python Backend</h4>
+<p style="margin-bottom:10px"><strong>Option 1 (Recommended):</strong> Run the auto-start script:</p>
+<pre style="background:#fff;padding:10px;border-radius:5px;margin:10px 0;color:#000">./start.sh</pre>
+<p style="margin-bottom:10px"><strong>Option 2:</strong> Manually start the server:</p>
+<pre style="background:#fff;padding:10px;border-radius:5px;margin:10px 0;color:#000">python3 simple_server.py</pre>
+<p style="margin-top:10px;font-size:0.9em">The page will automatically detect when the backend is ready.</p>
+</div>
 <div class="python-output" id="pythonOutput" style="display:none">
 <pre id="pythonLog"></pre>
 </div>
@@ -455,10 +463,41 @@ const PythonBackend = {
                 return true;
             }
         } catch (error) {
-            Logger.warning('Python backend not available - run: python3 simple_server.py');
-            UI.showStatus('⚠️ Python backend not running. JavaScript mode (may not work in CSP)', 'warning');
+            Logger.warning('Python backend not available - attempting auto-start...');
+            
+            // Attempt to start Python backend automatically
+            const started = await this.attemptAutoStart();
+            if (started) {
+                return true;
+            }
+            
+            UI.showStatus('⚠️ Python backend not running. Run: ./start.sh or python3 simple_server.py', 'warning');
         }
         this.enabled = false;
+        return false;
+    },
+    
+    async attemptAutoStart() {
+        try {
+            Logger.info('Attempting to auto-start Python backend...');
+            
+            // Inform user to run start script
+            UI.showStatus('💡 To enable Python mode, run: ./start.sh in terminal', 'info');
+            
+            // Wait a bit and check again
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            const response = await fetch('http://localhost:5001/api/status');
+            if (response.ok) {
+                const data = await response.json();
+                this.enabled = true;
+                Logger.python(`Python backend started: ${data.message}`);
+                UI.showStatus('✅ Python backend connected (CSP-compatible)', 'success');
+                return true;
+            }
+        } catch (error) {
+            // Auto-start failed, that's okay
+        }
         return false;
     },
     
@@ -1392,14 +1431,17 @@ const UI = {
             
             if (PythonBackend.enabled) {
                 this.enableConvertButton();
+                document.getElementById('pythonStartupInstructions').style.display = 'none';
             } else {
-                this.showInfo('Python backend is not available. Please ensure the server is running.');
+                this.showInfo('Python backend is not available. See instructions below to start the server.');
                 this.disableConvertButton();
+                document.getElementById('pythonStartupInstructions').style.display = 'block';
             }
         } else {
             this.elements.pythonBanner.style.display = 'none';
             this.elements.convertBtn.style.display = 'block';
             this.elements.convertBtnPython.style.display = 'none';
+            document.getElementById('pythonStartupInstructions').style.display = 'none';
             
             if (AppState.filesLoaded) {
                 this.enableConvertButton();
