@@ -176,7 +176,7 @@ input[type=range]{width:100%;margin:10px 0}
 <strong>ℹ Info:</strong> <span id="infoText"></span>
 </div>
 
-<div class="template-selector" id="templateSelector" style="display:none">
+<div class="template-selector" id="templateSelector" style="display:block">
 <h3>📋 Select SUT Template</h3>
 <p style="color:#6c757d;margin-bottom:15px">Choose how to create the CSP-compatible database structure:</p>
 <div class="template-options">
@@ -934,19 +934,30 @@ const UI = {
         UI.updateStats();
         UI.updatePreview([]);
         UI.elements.previewContainer.style.display = 'none';
-        UI.elements.templateSelector.style.display = 'block';
+        UI.elements.templateSelector.style.display = UI.elements.outputFormat.value === 'sut' ? 'block' : 'none';
         UI.elements.convertBtn.disabled = true;
         UI.elements.convertBtnPython.disabled = true;
         UI.elements.cancelBtn.disabled = true;
         UI.elements.log.innerHTML = '';
         UI.showStatus('All data cleared.', 'info');
         BrushParser.cleanup();
+        UI.hideInfo();
     },
 
     showStatus: (message, type = 'info') => {
         UI.elements.statusBar.classList.remove('success', 'error', 'info', 'warning');
         UI.elements.statusBar.classList.add('show', type);
         UI.elements.statusText.textContent = message;
+    },
+
+    showInfo: (message) => { 
+        UI.elements.infoBanner.style.display = 'block'; 
+        UI.elements.infoText.textContent = message; 
+    }, 
+    
+    hideInfo: () => { 
+        UI.elements.infoBanner.style.display = 'none'; 
+        UI.elements.infoText.textContent = ''; 
     },
 
     enableConvertButton: () => {
