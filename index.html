@@ -253,7 +253,7 @@ const AppState = {
         UI.updateStats();
         UI.enableConvertButton(false);
         UI.showStatus('Awaiting file input...', 'info');
-        // Re-add initial logs
+        // Initial logs
         Logger.info('SQL.js loaded successfully.');
         Logger.info('Loading default CSP template...');
     }
@@ -333,8 +333,12 @@ const UI = {
             tab.addEventListener('click', this.handleTabChange);
         });
 
-        // Initialize state
-        TemplateManager.loadDefaultTemplate().then(() => {
+        // Initial loading sequence
+        this.showLoading(true, 'Initializing...');
+        Promise.all([
+            new Promise(resolve => window.initSqlJs().then(() => { Logger.info('SQL.js loaded successfully.'); resolve(); })),
+            TemplateManager.loadDefaultTemplate().then(() => Logger.info('Loading default CSP template...'))
+        ]).then(() => {
             this.showLoading(false);
             this.showStatus('Ready. Drop files to begin!', 'success');
         });
@@ -756,20 +760,11 @@ const Converter = {
 // ===================================================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Initialize SQLite WASM (only for placeholder)
-    window.initSqlJs().then(SQL => { 
-        // AppState.db = new SQL.Database(); // Actual DB init commented out for simple template
-        Logger.info('SQL.js loaded successfully.');
-    });
-    
-    // 2. Initialize UI and attach event listeners
+    // 1. Initialize UI and attach event listeners
     UI.init();
     
-    // 3. Initialize Pressure Curve editor
+    // 2. Initialize Pressure Curve editor
     PressureCurve.init();
-    
-    // 4. Manual initial logs to reflect successful startup
-    Logger.info('Loading default CSP template...');
 });
 </script>
 </body>
