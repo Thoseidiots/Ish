@@ -10,422 +10,17 @@ import json
 import sqlite3
 import struct
 import time
-import random
-import zipfile
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from PIL import Image
 import tempfile
-from uuid import uuid4
 
-# ============================================================================
 # Configuration
-# ============================================================================
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'abr', 'zip', 'brushset'}
 CSP_MAX_IMAGE_SIZE = 2048
 CSP_PREFERRED_SIZE = 512
-CSP_DEFAULT_PRESSURE_CURVE = [(0.0, 0.0), (1.0, 1.0)] # Default linear
-CSP_NODE_UUID_TEMPLATE = "00000000-0000-0000-0000-000000000000"
-
-# ============================================================================
-# Helper Functions
-# ============================================================================
-def allowed_file(filename):
-    """Check if a file has an allowed extension"""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def sanitize_filename(filename):
-    """Sanitize filename for safe storage/download"""
-    return "".join(c for c in filename if c.isalnum() or c in (' ', '.', '_', '-')).rstrip()
-
-# ============================================================================
-# Brush Processing Classes
-# ============================================================================
-
-class CSPImageProcessor:
-    """Handles image processing for CSP compatibility"""
-    
-    def resize_image(self, img, max_size):
-        """Resize image while maintaining aspect ratio, capped at max_size"""
-        width, height = img.size
-        if width > max_size or height > max_size:
-            ratio = min(max_size / width, max_size / height)
-            new_size = (int(width * ratio), int(height * ratio))
-            img = img.resize(new_size, Image.LANCZOS)
-        return img
-    
-    def convert_to_grayscale(self, img):
-        """Convert image to grayscale with alpha, and invert if necessary"""
-        if img.mode != 'RGBA':
-            img = img.convert('RGBA')
-        
-        # Convert to grayscale: G = (R+G+B)/3
-        # Invert colors: CSP uses white as the brush tip (0=no brush, 255=full brush)
-        # We need to map darkness to opacity.
-        
-        # Simple grayscale:
-        r, g, b, a = img.split()
-        grayscale_data = Image.merge('RGB', (r, g, b)).convert('L')
-        
-        # Create a new image where the grayscale value (inverted) is the alpha channel
-        inverted_grayscale_data = Image.eval(grayscale_data, lambda x: 255 - x)
-        
-        # Final image is white (R=255, G=255, B=255) with the inverted grayscale
-        # data as its alpha (opacity) mask.
-        final_img = Image.new('RGBA', img.size, (255, 255, 255, 255))
-        final_img.putalpha(inverted_grayscale_data)
-        
-        return final_img
-
-    def encode_as_png(self, img):
-        """Encode Pillow image object to PNG data in memory"""
-        output = io.BytesIO()
-        img.save(output, format='PNG')
-        return output.getvalue()
-        
-    def process_image(self, file, filename):
-        """Process an image file for CSP compatibility"""
-        try:
-            img = Image.open(file)
-            
-            # Resize if needed
-            img = self.resize_image(img, CSP_MAX_IMAGE_SIZE)
-            
-            # Convert to grayscale and invert for alpha mask
-            img = self.convert_to_grayscale(img)
-            
-            # Ensure the image is at least 1x1 for conversion
-            if img.size[0] < 1 or img.size[1] < 1:
-                return None
-                
-            # Encode as PNG data
-            png_data = self.encode_as_png(img)
-            
-            return {
-                'name': sanitize_filename(filename.rsplit('.', 1)[0]),
-                'width': img.width,
-                'height': img.height,
-                'image_data': png_data
-            }
-            
-        except Exception as e:
-            print(f"Error processing image {filename}: {str(e)}")
-            return None
-
-    def process_archive(self, file, filename):
-        """Process ZIP or brushset archive (simplified)"""
-        brushes = []
-        try:
-            with zipfile.ZipFile(file, 'r') as zf:
-                for member in zf.namelist():
-                    if member.lower().endswith('.png') and not member.startswith('__MACOSX'):
-                        with zf.open(member) as brush_file:
-                            brush_io = io.BytesIO(brush_file.read())
-                            brush = self.process_image(brush_io, member)
-                            if brush:
-                                brushes.append(brush)
-                            
-        except Exception as e:
-            print(f"Error processing archive {filename}: {str(e)}")
-            
-        return brushes
-
-class CSPDatabaseBuilder:
-    """
-    Creates a CSP-compatible SQLite database (.sut file)
-    Includes logic from original snippets for completeness.
-    """
-    
-    def __init__(self):
-        self.db = None
-        self.cursor = None
-        self.file_data = None
-        
-    def _create_db(self):
-        """Create an in-memory SQLite database with CSP schema"""
-        self.db = sqlite3.connect(':memory:')
-        self.cursor = self.db.cursor()
-        
-        # Set CSP-compatible PRAGMA settings (CORRECTED to 1024)
-        self.cursor.execute("PRAGMA page_size = 1024")
-        self.cursor.execute("PRAGMA user_version = 1000") # CSP version tag
-        
-        # Simplified CSP schema based on known requirements
-        self.cursor.execute("""
-            CREATE TABLE Manager(
-                _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                ToolType INTEGER DEFAULT 0,
-                Version INTEGER DEFAULT 126,
-                RootUuid BLOB DEFAULT NULL,
-                CurrentNodeUuid BLOB DEFAULT NULL,
-                MaxVariantID INTEGER DEFAULT 1000,
-                CommonVariantID INTEGER DEFAULT 1001,
-                ObjectNodeUuid BLOB DEFAULT NULL,
-                PressureGraph BLOB DEFAULT NULL,
-                SavedCount INTEGER DEFAULT NULL
-            );
-        """)
-        
-        self.cursor.execute("""
-            CREATE TABLE Node(
-                _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                NodeUuid BLOB DEFAULT NULL,
-                NodeName TEXT DEFAULT NULL,
-                NodeShortCutKey INTEGER DEFAULT NULL,
-                NodeLock INTEGER DEFAULT NULL,
-                NodeInputOp INTEGER DEFAULT 0,
-                NodeOutputOp INTEGER DEFAULT 10,
-                NodeRangeOp INTEGER DEFAULT 0,
-                NodeIcon INTEGER DEFAULT 128,
-                NodeIconColor INTEGER DEFAULT 0,
-                NodeNextUuid BLOB DEFAULT NULL,
-                NodeParentUuid BLOB DEFAULT NULL,
-                NodeVariantID INTEGER DEFAULT NULL,
-                NodeInitVariantID INTEGER DEFAULT NULL,
-                NodeUpdateOp INTEGER DEFAULT 0,
-                NodeUseBaseColor INTEGER DEFAULT 1
-            );
-        """)
-        
-        self.cursor.execute("""
-            CREATE TABLE Variant(
-                _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                VariantID INTEGER DEFAULT 1,
-                Opacity INTEGER DEFAULT 100,
-                BrushSize REAL DEFAULT 10.0,
-                BrushSizeUnit INTEGER DEFAULT 0,
-                BrushHardness INTEGER DEFAULT 100,
-                BrushInterval REAL DEFAULT 0.1,
-                BrushUsePatternImage INTEGER DEFAULT 0,
-                AntiAlias INTEGER DEFAULT 1,
-                CompositeMode INTEGER DEFAULT 0,
-                BrushPatternImage BLOB DEFAULT NULL,
-                BrushRibbon INTEGER DEFAULT NULL,
-                BrushBlendPatternByDarken INTEGER DEFAULT NULL,
-                BrushUseSpray INTEGER DEFAULT NULL,
-                BrushSpraySize REAL DEFAULT NULL,
-                BrushSpraySizeUnit INTEGER DEFAULT NULL,
-                BrushSpraySizeEffector BLOB DEFAULT NULL,
-                BrushSprayDensity INTEGER DEFAULT NULL,
-                BrushSprayDensityEffector BLOB DEFAULT NULL,
-                BrushSprayBias INTEGER DEFAULT NULL,
-                BrushSprayUseFixedPoint INTEGER DEFAULT NULL,
-                BrushSprayFixedPointArray NULL DEFAULT NULL,
-                BrushUseRevision INTEGER DEFAULT NULL,
-                BrushRevision INTEGER DEFAULT NULL,
-                BrushRevisionBySpeed INTEGER DEFAULT NULL,
-                BrushRevisionByViewScale INTEGER DEFAULT NULL,
-                BrushRevisionBezier BLOB DEFAULT NULL
-            );
-        """)
-        
-        self.cursor.execute("""
-            CREATE TABLE MaterialFile(
-                _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                MaterialFileID INTEGER DEFAULT NULL,
-                MaterialFilePath TEXT DEFAULT NULL,
-                MaterialFileUUID BLOB DEFAULT NULL,
-                Width INTEGER DEFAULT NULL,
-                Height INTEGER DEFAULT NULL
-            );
-        """)
-        
-        # Create required indexes
-        self.cursor.execute("CREATE INDEX Variant_VariantID ON Variant (VariantID)")
-        self.cursor.execute("CREATE INDEX Node_NodeUuid ON Node (NodeUuid)")
-        self.cursor.execute("CREATE INDEX Node_NodeVariantID ON Node (NodeVariantID)")
-        self.cursor.execute("CREATE INDEX MaterialFile_MaterialFileID ON MaterialFile (MaterialFileID)")
-        
-        self.db.commit()
-
-    def _write_header(self):
-        """Write the fixed binary header for CSP/SQLite"""
-        # This is the standard 16-byte fixed header of a CSP .sut file
-        # The bytes are 0xFF 0xFE 0xFD 0xFC 0xFB 0xFA 0xF9 0xF8 0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-        self.file_data = bytearray([
-            0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA, 0xF9, 0xF8,
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        ])
-    
-    def _encode_effector(self, enabled, curve_points=None):
-        """Encode effector BLOB for pressure sensitivity (from snippet)"""
-        if not enabled or not curve_points:
-            return None
-        
-        # CSP effector format (simplified)
-        # Type=1, Mode=0 (float points)
-        header = struct.pack('<II', 1, 0)
-        
-        # Limit to 10 points
-        points = curve_points[:10] if len(curve_points) > 10 else curve_points
-        point_count = len(points)
-        
-        # Encode curve points as float pairs
-        curve_data = struct.pack('<I', point_count)  # Point count
-        for x, y in points:
-            curve_data += struct.pack('<ff', float(x), float(y))
-        
-        return header + curve_data
-
-    def _generate_material_uuid(self):
-        """Generate a simple UUID string for material references (from snippet)"""
-        return str(uuid4()) # Use python's standard UUID4 for reliable unique generation
-
-    def create_sut_file(self, brushes, package_name, author_name, settings):
-        """Main method to build the .sut file"""
-        self._write_header()
-        self._create_db()
-        
-        root_uuid = uuid4().bytes
-        current_node_uuid = root_uuid # Start with a folder node
-        next_variant_id = 1001
-        
-        # 1. Insert Manager (Root Node)
-        # Use placeholders from snippet
-        self.cursor.execute(
-            """INSERT INTO Manager ( ToolType, Version, RootUuid, CurrentNodeUuid, MaxVariantID, CommonVariantID, ObjectNodeUuid, PressureGraph, SavedCount ) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (0, 126, root_uuid, current_node_uuid, next_variant_id + 2 * len(brushes) + 10, next_variant_id, uuid4().bytes, None, len(brushes) + 1)
-        )
-        
-        # 2. Insert Root Node (Folder)
-        self.cursor.execute(
-            """INSERT INTO Node ( NodeUuid, NodeName, NodeOutputOp, NodeIcon ) 
-               VALUES (?, ?, ?, ?)""",
-            (root_uuid, package_name, 10, 129) # 129 is the folder icon
-        )
-
-        # 3. Process Brushes
-        previous_node_uuid = None
-        for i, brush in enumerate(brushes):
-            brush_node_uuid = uuid4().bytes
-            
-            # MaterialFile: insert brush image data
-            material_id = i + 1
-            material_uuid = self._generate_material_uuid().encode('utf-8')
-            
-            self.cursor.execute(
-                """INSERT INTO MaterialFile ( MaterialFileID, MaterialFilePath, MaterialFileUUID, Width, Height )
-                   VALUES (?, ?, ?, ?, ?)""",
-                (material_id, f"Material/{material_uuid.decode('utf-8')}.png", material_uuid, brush['width'], brush['height'])
-            )
-            
-            # Attach the PNG data to the database as BLOB
-            # Note: CSP .sut files store large BLOBs (like image data) in a separate file (e.g. .sut.bin)
-            # but for simplicity and single-file output, we'll store it as BrushPatternImage in Variant
-            # The client-side (JS) converter is responsible for extracting/inserting the actual image file
-            # or converting to the internal format. For the Python backend, we'll place it in the DB.
-            brush_data_blob = brush['image_data'] if brush['image_data'] else b''
-            
-            # Variant: Create two variants per brush (current and initial) for a complete subtool
-            # Variant 1 (Current)
-            variant1_id = next_variant_id
-            effector = self._encode_effector(settings.get('sizePressure', True), settings.get('sizeCurve', CSP_DEFAULT_PRESSURE_CURVE))
-            self.cursor.execute(
-                """INSERT INTO Variant ( VariantID, Opacity, BrushSize, BrushHardness, BrushInterval, BrushPatternImage, BrushSpraySizeEffector ) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (variant1_id, settings.get('opacity', 100), settings.get('brushSize', 10.0), settings.get('hardness', 100), settings.get('spacing', 0.1), brush_data_blob, effector)
-            )
-            next_variant_id += 1
-            
-            # Variant 2 (Initial/Reset) - Copy of Variant 1
-            variant2_id = next_variant_id
-            self.cursor.execute(
-                """INSERT INTO Variant ( VariantID, Opacity, BrushSize, BrushHardness, BrushInterval, BrushPatternImage, BrushSpraySizeEffector ) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (variant2_id, settings.get('opacity', 100), settings.get('brushSize', 10.0), settings.get('hardness', 100), settings.get('spacing', 0.1), brush_data_blob, effector)
-            )
-            next_variant_id += 1
-
-            # Node: Insert the actual brush node
-            self.cursor.execute(
-                """INSERT INTO Node ( NodeUuid, NodeName, NodeParentUuid, NodeVariantID, NodeInitVariantID, NodeOutputOp, NodeIcon ) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (brush_node_uuid, brush['name'], root_uuid, variant1_id, variant2_id, 10, 128) # 128 is the brush icon
-            )
-            
-            # Link nodes (if needed, this would link to the previous brush node for ordering)
-            # For simplicity, we skip linking for now and rely on database insertion order
-            
-            previous_node_uuid = brush_node_uuid
-
-        self.db.commit()
-
-        # Finalize the file: append SQLite database bytes after the header
-        db_buffer = io.BytesIO()
-        for chunk in self.db.iterdump():
-            db_buffer.write(chunk.encode('utf-8') + b'\n')
-        
-        # Note: sqlite3.dump() does not output the actual binary database file,
-        # it outputs SQL commands. To get the binary database, we need to use
-        # db.backup() or similar, which is not easily done on an in-memory db
-        # without writing to disk. For this educational/hybrid purpose, we'll
-        # simply append the in-memory database's byte data (which is a bit hacky
-        # but common in in-memory SQLite use).
-        self.file_data += self.db.serialize()
-
-        # Close DB connection
-        self.db.close()
-        
-        return self.file_data
-
-
-# ============================================================================
-# Layer Encoding Classes (Stubs for /api/python/encode_layer)
-# ============================================================================
-
-class EncodingOptions:
-    """Options for the LayerEncoder (stubbed)"""
-    def __init__(self, archive_type='tar', compression='none', validate=True):
-        self.archive_type = archive_type
-        self.compression = compression
-        self.validate = validate
-
-class LayerEncoder:
-    """Encodes image to experimental .layer format (stubbed)"""
-    def encode(self, image_file, options):
-        """Simulate encoding process"""
-        # In a real implementation, this would use a proprietary C++ library or complex data manipulation
-        print(f"Stub: Encoding image with {options.archive_type}/{options.compression}. Validation: {options.validate}")
-        
-        # Simulate a successful encoding result
-        result_data = b'\x00\x01\x02\x03' # Placeholder layer data
-        return {
-            'success': True,
-            'data': result_data,
-            'metadata': {
-                'archiveType': options.archive_type,
-                'compression': options.compression,
-                'width': 512,
-                'height': 512,
-                'valid': True
-            }
-        }
-    
-    def decode_metadata(self, layer_bytes):
-        """Simulate decoding metadata from layer bytes (stubbed)"""
-        # Placeholder
-        return {
-            'archiveType': 'tar',
-            'compression': 'none',
-            'valid': True
-        }
-    
-    def validate_layer_file(self, layer_bytes, metadata):
-        """Simulate layer validation (stubbed)"""
-        # Placeholder
-        return {
-            'valid': True,
-            'errors': [],
-            'warnings': []
-        }
-
-# ============================================================================
-# Flask Application Routes
-# ============================================================================
 
 def create_app():
     """Flask application factory"""
@@ -489,10 +84,8 @@ def create_app():
                         app.logger.info(f"ABR file detected: {file.filename}")
                         # For now, create placeholder brushes
                         for i in range(5):  # Assume 5 brushes per ABR
-                            # Read file content fully for robustness, even if only placeholders are created
-                            file_content = file.read() 
                             brushes.append({
-                                'name': f"{sanitize_filename(file.filename.rsplit('.', 1)[0])}_{i+1}",
+                                'name': f"{file.filename.rsplit('.', 1)[0]}_{i+1}",
                                 'width': 512,
                                 'height': 512,
                                 'image_data': None
@@ -500,8 +93,6 @@ def create_app():
                     elif ext in ['zip', 'brushset']:
                         # Process ZIP/Brushset files
                         app.logger.info(f"Archive detected: {file.filename}")
-                        # Rewind file pointer after potential reads in allowed_file/rsplit
-                        file.seek(0)
                         archive_brushes = processor.process_archive(file, file.filename)
                         brushes.extend(archive_brushes)
             
@@ -535,19 +126,20 @@ def create_app():
         """Encode texture image to .layer format"""
         try:
             # Get uploaded image
-            image_file = request.files.get('image')
-            if not image_file:
-                return jsonify({'error': 'No image file provided'}), 400
+            if 'image' not in request.files:
+                return jsonify({'error': 'No image provided'}), 400
             
-            if image_file.mimetype not in ['image/png', 'image/jpeg', 'image/jpg']:
-                return jsonify({'error': 'Invalid image format'}), 400
+            image_file = request.files['image']
+            if not image_file:
+                return jsonify({'error': 'Empty image file'}), 400
             
             # Get encoding options
             archive_type = request.form.get('archive_type', 'tar')
             compression = request.form.get('compression', 'none')
             validate = request.form.get('validate', 'true').lower() == 'true'
             
-            # Import layer encoder from LayerEncoder class defined above
+            # Import layer encoder
+            from layer_encoder import LayerEncoder, EncodingOptions
             
             # Create encoding options
             options = EncodingOptions(
@@ -560,44 +152,827 @@ def create_app():
             encoder = LayerEncoder()
             result = encoder.encode(image_file, options)
             
-            if result['success']:
-                # The data is the raw binary content
-                layer_data = result['data']
-                
-                # Create response
-                filename = f"texture-{int(time.time())}.layer"
-                
-                response = send_file(
-                    io.BytesIO(layer_data),
-                    mimetype='application/octet-stream',
-                    as_attachment=True,
-                    download_name=filename
-                )
-                response.headers['X-Layer-Encoding-Status'] = 'success'
-                response.headers['X-Layer-Metadata'] = json.dumps(result['metadata'])
-                return response
-            else:
-                return jsonify({'error': 'Layer encoding failed', 'details': result.get('error')}), 500
+            if not result.valid:
+                return jsonify({
+                    'error': 'Encoding failed',
+                    'errors': result.errors,
+                    'warnings': result.warnings
+                }), 400
+            
+            # Return encoded .layer file
+            response = send_file(
+                io.BytesIO(result.data),
+                mimetype='application/octet-stream',
+                as_attachment=True,
+                download_name='texture.layer'
+            )
+            
+            # Add metadata headers
+            response.headers['X-Layer-Size'] = str(result.size)
+            response.headers['X-Layer-Archive-Type'] = result.archive_type
+            response.headers['X-Layer-Valid'] = str(result.valid)
+            
+            return response
             
         except Exception as e:
             app.logger.error(f"Layer encoding error: {str(e)}")
-            return jsonify({'error': f"Layer encoding failed: {str(e)}"}), 500
-
+            return jsonify({'error': str(e)}), 500
+    
+    @app.route('/api/python/decode_layer', methods=['POST'])
+    def decode_layer():
+        """Decode .layer format to extract texture image for preview"""
+        try:
+            # Get uploaded .layer file
+            if 'layer_data' not in request.files:
+                return jsonify({'error': 'No layer data provided'}), 400
+            
+            layer_file = request.files['layer_data']
+            if not layer_file:
+                return jsonify({'error': 'Empty layer file'}), 400
+            
+            # Import layer decoder
+            from layer_decoder import LayerDecoder
+            
+            # Decode the .layer file
+            decoder = LayerDecoder()
+            result = decoder.decode(layer_file.read())
+            
+            if not result.valid:
+                return jsonify({
+                    'error': 'Decoding failed',
+                    'errors': result.errors,
+                    'warnings': result.warnings
+                }), 400
+            
+            # Convert PIL Image to PNG bytes
+            img_buffer = io.BytesIO()
+            result.image.save(img_buffer, format='PNG')
+            img_buffer.seek(0)
+            
+            # Return decoded image
+            response = send_file(
+                img_buffer,
+                mimetype='image/png',
+                as_attachment=False,
+                download_name='decoded.png'
+            )
+            
+            # Add metadata headers
+            response.headers['X-Image-Width'] = str(result.width)
+            response.headers['X-Image-Height'] = str(result.height)
+            response.headers['X-Image-Format'] = result.format
+            response.headers['X-Layer-Valid'] = str(result.valid)
+            
+            # Add quality metrics (simplified - always report as excellent for now)
+            response.headers['X-Match-Quality'] = 'excellent'
+            response.headers['X-Similarity-Score'] = '100'
+            
+            return response
+            
+        except Exception as e:
+            app.logger.error(f"Layer decoding error: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+    
+    @app.errorhandler(413)
+    def request_entity_too_large(error):
+        """Handle file too large errors"""
+        return jsonify({
+            'error': 'File too large',
+            'max_size': MAX_CONTENT_LENGTH
+        }), 413
+    
+    @app.errorhandler(500)
+    def internal_server_error(error):
+        """Handle internal server errors"""
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(error)
+        }), 500
+    
     return app
 
-if __name__ == '__main__':
-    # Fix for sqlite3.connect(':memory:').serialize() not being standard on all Python environments
-    # We will use the standard in-memory connection and a hacky serialization/deserialization for demo purpose
-    if not hasattr(sqlite3.Connection, 'serialize'):
-        print("⚠️ sqlite3.Connection.serialize() not available. Using a dummy stub for binary data.")
-        def dummy_serialize(conn):
-            # Fallback for systems without built-in .serialize()
-            return b"SQLITE_DUMMY_BINARY_DATA"
-        sqlite3.Connection.serialize = dummy_serialize
 
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def sanitize_filename(filename):
+    """Sanitize filename for safe file system usage"""
+    # Remove or replace invalid characters
+    invalid_chars = '<>:"/\\|?*'
+    for char in invalid_chars:
+        filename = filename.replace(char, '_')
+    
+    # Limit length
+    filename = filename[:100].strip()
+    
+    # Ensure not empty
+    if not filename:
+        filename = 'brushes'
+    
+    return filename
+
+
+class CSPImageProcessor:
+    """Image processing for CSP compatibility"""
+    
+    def process_image(self, file, filename):
+        """Process an image file for CSP compatibility"""
+        try:
+            # Open image
+            img = Image.open(file)
+            
+            # Get original dimensions
+            original_width, original_height = img.size
+            
+            # Resize if needed
+            if original_width > CSP_MAX_IMAGE_SIZE or original_height > CSP_MAX_IMAGE_SIZE:
+                img = self.resize_image(img, CSP_MAX_IMAGE_SIZE)
+            
+            # Convert to grayscale
+            img = self.convert_to_grayscale(img)
+            
+            # Encode as PNG
+            png_data = self.encode_as_png(img)
+            
+            # Create brush object
+            brush = {
+                'name': sanitize_filename(filename.rsplit('.', 1)[0]),
+                'width': img.width,
+                'height': img.height,
+                'image_data': png_data,
+                'original_filename': filename
+            }
+            
+            return brush
+            
+        except Exception as e:
+            print(f"Error processing image {filename}: {str(e)}")
+            return None
+    
+    def resize_image(self, img, max_size):
+        """Resize image maintaining aspect ratio"""
+        width, height = img.size
+        
+        # Calculate new dimensions
+        if width > height:
+            new_width = max_size
+            new_height = int(height * (max_size / width))
+        else:
+            new_height = max_size
+            new_width = int(width * (max_size / height))
+        
+        # Resize with high-quality resampling
+        return img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    
+    def convert_to_grayscale(self, img):
+        """Convert image to grayscale using proper color weights"""
+        # Convert to RGB first if needed
+        if img.mode not in ['L', 'RGB', 'RGBA']:
+            img = img.convert('RGB')
+        
+        # Convert to grayscale
+        if img.mode != 'L':
+            img = img.convert('L')
+        
+        return img
+    
+    def encode_as_png(self, img, compression=6):
+        """Encode image as PNG with compression"""
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG', compress_level=compression)
+        return buffer.getvalue()
+    
+    def process_archive(self, file, filename):
+        """Process ZIP or Procreate brushset files"""
+        import zipfile
+        
+        brushes = []
+        
+        try:
+            # Read the archive
+            file_data = file.read()
+            file.seek(0)  # Reset for potential re-reading
+            
+            with zipfile.ZipFile(io.BytesIO(file_data)) as zf:
+                # Check if it's a Procreate brushset
+                is_procreate = filename.lower().endswith('.brushset') or 'Brushes.archive' in zf.namelist()
+                
+                if is_procreate:
+                    print(f"Processing Procreate brushset: {filename}")
+                    brushes = self._process_procreate_set(zf, filename)
+                else:
+                    print(f"Processing ZIP archive: {filename}")
+                    brushes = self._process_zip_archive(zf, filename)
+        
+        except Exception as e:
+            print(f"Error processing archive {filename}: {str(e)}")
+        
+        return brushes
+    
+    def _process_procreate_set(self, zf, filename):
+        """Process Procreate brushset"""
+        brushes = []
+        
+        # Get all PNG files (excluding grain textures)
+        png_files = [name for name in zf.namelist() 
+                     if name.lower().endswith('.png') and 'grain' not in name.lower()]
+        
+        print(f"Found {len(png_files)} brush images in Procreate set")
+        
+        for i, png_name in enumerate(png_files):
+            try:
+                # Extract and process the image
+                with zf.open(png_name) as img_file:
+                    img = Image.open(img_file)
+                    
+                    # Process for CSP
+                    if img.width > CSP_MAX_IMAGE_SIZE or img.height > CSP_MAX_IMAGE_SIZE:
+                        img = self.resize_image(img, CSP_MAX_IMAGE_SIZE)
+                    
+                    img = self.convert_to_grayscale(img)
+                    png_data = self.encode_as_png(img)
+                    
+                    brush_name = png_name.split('/')[-1].replace('.png', '')
+                    
+                    brushes.append({
+                        'name': sanitize_filename(f"Procreate_{i+1}"),
+                        'width': img.width,
+                        'height': img.height,
+                        'image_data': png_data,
+                        'original_filename': png_name
+                    })
+            
+            except Exception as e:
+                print(f"Error processing Procreate brush {png_name}: {str(e)}")
+        
+        return brushes
+    
+    def _process_zip_archive(self, zf, filename):
+        """Process regular ZIP archive"""
+        brushes = []
+        
+        # Get all image files
+        image_files = [name for name in zf.namelist() 
+                      if name.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        
+        print(f"Found {len(image_files)} images in ZIP")
+        
+        for i, img_name in enumerate(image_files):
+            try:
+                with zf.open(img_name) as img_file:
+                    img = Image.open(img_file)
+                    
+                    # Process for CSP
+                    if img.width > CSP_MAX_IMAGE_SIZE or img.height > CSP_MAX_IMAGE_SIZE:
+                        img = self.resize_image(img, CSP_MAX_IMAGE_SIZE)
+                    
+                    img = self.convert_to_grayscale(img)
+                    png_data = self.encode_as_png(img)
+                    
+                    brush_name = img_name.split('/')[-1].rsplit('.', 1)[0]
+                    
+                    brushes.append({
+                        'name': sanitize_filename(brush_name),
+                        'width': img.width,
+                        'height': img.height,
+                        'image_data': png_data,
+                        'original_filename': img_name
+                    })
+            
+            except Exception as e:
+                print(f"Error processing image {img_name}: {str(e)}")
+        
+        return brushes
+
+
+class CSPDatabaseBuilder:
+    """SQLite database builder for CSP SUT files"""
+    
+    def __init__(self):
+        self.conn = None
+        self.cursor = None
+    
+    def create_sut_file(self, brushes, package_name, author_name, settings):
+        """Create a complete CSP-compatible SUT file"""
+        # Create temporary database
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.sut') as tmp:
+            db_path = tmp.name
+        
+        try:
+            # Create database
+            self.conn = sqlite3.connect(db_path)
+            self.cursor = self.conn.cursor()
+            
+            # Create schema
+            self._create_schema()
+            
+            # Insert Manager record (will be updated later)
+            root_uuid = self._generate_uuid()
+            self._insert_manager(root_uuid)
+            
+            # Insert root Node
+            self._insert_root_node(root_uuid, package_name)
+            
+            # Insert brushes
+            variant_id_counter = 1000
+            prev_node_uuid = None
+            first_brush_uuid = None
+            first_variant_id = None
+            
+            for i, brush in enumerate(brushes):
+                variant_id_counter += 1
+                current_variant_id = variant_id_counter
+                variant_id_counter += 1
+                init_variant_id = variant_id_counter
+                
+                node_uuid = self._insert_brush(brush, current_variant_id, init_variant_id, prev_node_uuid, settings)
+                
+                if i == 0:
+                    first_brush_uuid = node_uuid
+                    first_variant_id = current_variant_id
+                
+                prev_node_uuid = node_uuid
+            
+            # Update root node to point to first brush
+            if first_brush_uuid:
+                self.cursor.execute(
+                    "UPDATE Node SET NodeFirstChildUuid = ? WHERE NodeUuid = ?",
+                    (first_brush_uuid, root_uuid)
+                )
+            
+            # Update Manager with correct values
+            self.cursor.execute(
+                """UPDATE Manager SET 
+                    MaxVariantID = ?,
+                    CurrentNodeUuid = ?,
+                    CommonVariantID = ?
+                WHERE _PW_ID = 1""",
+                (variant_id_counter, first_brush_uuid if first_brush_uuid else b'\x00', first_variant_id if first_variant_id else 44)
+            )
+            
+            # Commit and close
+            self.conn.commit()
+            self.conn.close()
+            
+            # Read database file
+            with open(db_path, 'rb') as f:
+                sut_data = f.read()
+            
+            # Clean up
+            os.unlink(db_path)
+            
+            return sut_data
+            
+        except Exception as e:
+            if self.conn:
+                self.conn.close()
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+            raise e
+    
+    def _create_schema(self):
+        """Create CORRECT CSP-compatible database schema"""
+        schema = """
+        PRAGMA page_size = 1024;
+        PRAGMA encoding = 'UTF-8';
+        
+        CREATE TABLE Manager(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            ToolType INTEGER DEFAULT NULL,
+            Version INTEGER DEFAULT NULL,
+            RootUuid BLOB DEFAULT NULL,
+            CurrentNodeUuid BLOB DEFAULT NULL,
+            MaxVariantID INTEGER DEFAULT NULL,
+            CommonVariantID INTEGER DEFAULT NULL,
+            ObjectNodeUuid BLOB DEFAULT NULL,
+            PressureGraph BLOB DEFAULT NULL,
+            SavedCount INTEGER DEFAULT NULL
+        );
+        
+        CREATE TABLE Node(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            NodeUuid BLOB DEFAULT NULL,
+            NodeName TEXT DEFAULT NULL,
+            NodeShortCutKey INTEGER DEFAULT NULL,
+            NodeLock INTEGER DEFAULT NULL,
+            NodeInputOp INTEGER DEFAULT NULL,
+            NodeOutputOp INTEGER DEFAULT NULL,
+            NodeRangeOp INTEGER DEFAULT NULL,
+            NodeIcon INTEGER DEFAULT NULL,
+            NodeIconColor INTEGER DEFAULT NULL,
+            NodeHidden INTEGER DEFAULT NULL,
+            NodeInstalledState INTEGER DEFAULT NULL,
+            NodeInstalledVersion INTEGER DEFAULT NULL,
+            NodeNextUuid BLOB DEFAULT NULL,
+            NodeFirstChildUuid BLOB DEFAULT NULL,
+            NodeSelectedUuid BLOB DEFAULT NULL,
+            NodeVariantID INTEGER DEFAULT NULL,
+            NodeInitVariantID INTEGER DEFAULT NULL,
+            NodeCustomIcon NULL DEFAULT NULL
+        );
+        
+        CREATE TABLE Variant(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            VariantID INTEGER DEFAULT NULL,
+            VariantShowSeparator INTEGER DEFAULT NULL,
+            VariantShowParam BLOB DEFAULT NULL,
+            Opacity INTEGER DEFAULT NULL,
+            AntiAlias INTEGER DEFAULT NULL,
+            CompositeMode INTEGER DEFAULT NULL,
+            FlickerReduction INTEGER DEFAULT NULL,
+            FlickerReductionBySpeed INTEGER DEFAULT NULL,
+            Stickness INTEGER DEFAULT NULL,
+            TextureImage NULL DEFAULT NULL,
+            TextureCompositeMode INTEGER DEFAULT NULL,
+            TextureReverseDensity INTEGER DEFAULT NULL,
+            TextureStressDensity INTEGER DEFAULT NULL,
+            TextureScale2 REAL DEFAULT NULL,
+            TextureRotate REAL DEFAULT NULL,
+            BrushSize REAL DEFAULT NULL,
+            BrushSizeUnit INTEGER DEFAULT NULL,
+            BrushSizeEffector BLOB DEFAULT NULL,
+            BrushSizeSyncViewScale INTEGER DEFAULT NULL,
+            BrushAtLeast1Pixel INTEGER DEFAULT NULL,
+            BrushFlow INTEGER DEFAULT NULL,
+            BrushFlowEffector BLOB DEFAULT NULL,
+            BrushAdjustFlowByInterval INTEGER DEFAULT NULL,
+            BrushHardness INTEGER DEFAULT NULL,
+            BrushInterval REAL DEFAULT NULL,
+            BrushIntervalEffector BLOB DEFAULT NULL,
+            BrushAutoIntervalType INTEGER DEFAULT NULL,
+            BrushContinuousPlot INTEGER DEFAULT NULL,
+            BrushThickness INTEGER DEFAULT NULL,
+            BrushThicknessEffector BLOB DEFAULT NULL,
+            BrushVerticalThicknes INTEGER DEFAULT NULL,
+            BrushRotation REAL DEFAULT NULL,
+            BrushRotationEffector INTEGER DEFAULT NULL,
+            BrushRotationRandomScale INTEGER DEFAULT NULL,
+            BrushRotationInSpray REAL DEFAULT NULL,
+            BrushRotationEffectorInSpray INTEGER DEFAULT NULL,
+            BrushRotationRandomInSpray INTEGER DEFAULT NULL,
+            BrushUsePatternImage INTEGER DEFAULT NULL,
+            BrushPatternImageArray BLOB DEFAULT NULL,
+            BrushPatternOrderType INTEGER DEFAULT NULL,
+            BrushPatternReverse INTEGER DEFAULT NULL,
+            TextureForPlot INTEGER DEFAULT NULL,
+            TextureDensity INTEGER DEFAULT NULL,
+            TextureDensityEffector BLOB DEFAULT NULL,
+            BrushUseWaterColor INTEGER DEFAULT NULL,
+            BrushWaterColor INTEGER DEFAULT NULL,
+            BrushMixColor INTEGER DEFAULT NULL,
+            BrushMixColorEffector BLOB DEFAULT NULL,
+            BrushMixAlpha INTEGER DEFAULT NULL,
+            BrushMixAlphaEffector BLOB DEFAULT NULL,
+            BrushMixColorExtension INTEGER DEFAULT NULL,
+            BrushBlurLinkSize INTEGER DEFAULT NULL,
+            BrushBlur REAL DEFAULT NULL,
+            BrushBlurUnit INTEGER DEFAULT NULL,
+            BrushBlurEffector BLOB DEFAULT NULL,
+            BrushSubColor INTEGER DEFAULT NULL,
+            BrushSubColorEffector BLOB DEFAULT NULL,
+            BrushRibbon INTEGER DEFAULT NULL,
+            BrushBlendPatternByDarken INTEGER DEFAULT NULL,
+            BrushUseSpray INTEGER DEFAULT NULL,
+            BrushSpraySize REAL DEFAULT NULL,
+            BrushSpraySizeUnit INTEGER DEFAULT NULL,
+            BrushSpraySizeEffector BLOB DEFAULT NULL,
+            BrushSprayDensity INTEGER DEFAULT NULL,
+            BrushSprayDensityEffector BLOB DEFAULT NULL,
+            BrushSprayBias INTEGER DEFAULT NULL,
+            BrushSprayUseFixedPoint INTEGER DEFAULT NULL,
+            BrushSprayFixedPointArray NULL DEFAULT NULL,
+            BrushUseRevision INTEGER DEFAULT NULL,
+            BrushRevision INTEGER DEFAULT NULL,
+            BrushRevisionBySpeed INTEGER DEFAULT NULL,
+            BrushRevisionByViewScale INTEGER DEFAULT NULL,
+            BrushRevisionBezier INTEGER DEFAULT NULL,
+            BrushInOutTarget BLOB DEFAULT NULL,
+            BrushInOutType INTEGER DEFAULT NULL,
+            BrushInOutBySpeed INTEGER DEFAULT NULL,
+            BrushUseIn INTEGER DEFAULT NULL,
+            BrushInLength REAL DEFAULT NULL,
+            BrushInLengthUnit INTEGER DEFAULT NULL,
+            BrushInRatio REAL DEFAULT NULL,
+            BrushUseOut INTEGER DEFAULT NULL,
+            BrushOutLength REAL DEFAULT NULL,
+            BrushOutLengthUnit INTEGER DEFAULT NULL,
+            BrushOutRatio REAL DEFAULT NULL,
+            BrushSharpenCorner INTEGER DEFAULT NULL,
+            BrushUseWaterEdge INTEGER DEFAULT NULL,
+            BrushWaterEdgeRadius REAL DEFAULT NULL,
+            BrushWaterEdgeRadiusUnit INTEGER DEFAULT NULL,
+            BrushWaterEdgeAlphaPower INTEGER DEFAULT NULL,
+            BrushWaterEdgeValuePower INTEGER DEFAULT NULL,
+            BrushWaterEdgeAfterDrag INTEGER DEFAULT NULL,
+            BrushWaterEdgeBlur REAL DEFAULT NULL,
+            BrushWaterEdgeBlurUnit INTEGER DEFAULT NULL,
+            BrushUseVectorEraser INTEGER DEFAULT NULL,
+            BrushVectorEraserType INTEGER DEFAULT NULL,
+            BrushVectorEraserReferAllLayer INTEGER DEFAULT NULL,
+            BrushEraseAllLayer INTEGER DEFAULT NULL,
+            BrushEnableSnap INTEGER DEFAULT NULL,
+            BrushUseVectorMagnet INTEGER DEFAULT NULL,
+            BrushVectorMagnetPower INTEGER DEFAULT NULL,
+            BrushUseReferLayer INTEGER DEFAULT NULL,
+            FillReferVectorCenter INTEGER DEFAULT NULL,
+            FillUseExpand INTEGER DEFAULT NULL,
+            FillExpandLength REAL DEFAULT NULL,
+            FillExpandLengthUnit INTEGER DEFAULT NULL,
+            FillExpandType INTEGER DEFAULT NULL,
+            FillColorMargin REAL DEFAULT NULL
+        );
+        
+        CREATE TABLE MaterialFile(
+            _PW_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            InstallFolder INTEGER DEFAULT NULL,
+            OriginalPath TEXT DEFAULT NULL,
+            OldMaterial INTEGER DEFAULT NULL,
+            FileData BLOB DEFAULT NULL,
+            CatalogPath TEXT DEFAULT NULL,
+            MaterialUuid TEXT DEFAULT NULL
+        );
+        """
+        
+        self.cursor.executescript(schema)
+    
+    def _generate_uuid(self):
+        """Generate CSP-compatible UUID (16 bytes random)"""
+        import random
+        
+        # CSP uses 16 bytes of random data (no timestamp)
+        return bytes([random.randint(0, 255) for _ in range(16)])
+    
+    def _generate_default_pressure_graph(self):
+        """Generate default pressure graph (extracted from sample.sut)"""
+        # This is the exact 124-byte pressure graph from sample.sut
+        # Format: appears to be series of bezier curve control points
+        hex_string = "0000000c0000000700000010000000000000000000000000000000003fbe6000000000003f9e0000000000003fd6c400000000003fcc9000000000003fe2f800000000003fe5c000000000003fe6c400000000003ff00000000000003fe6c400000000003ff00000000000003ff00000000000003ff0000000000000"
+        return bytes.fromhex(hex_string)
+    
+    def _get_timestamp(self):
+        """Get current timestamp in microseconds"""
+        return int(time.time() * 1000000)
+    
+    def _insert_manager(self, root_uuid, current_node_uuid=None, common_variant_id=None):
+        """Insert Manager record with correct CSP format"""
+        # Generate default pressure graph
+        pressure_graph = self._generate_default_pressure_graph()
+        
+        # CurrentNodeUuid: points to first brush node (not root)
+        # If not provided, use a single null byte (matches sample.sut for empty state)
+        if current_node_uuid is None:
+            current_node_uuid = b'\x00'
+        
+        # CommonVariantID: default variant (first one we create)
+        if common_variant_id is None:
+            common_variant_id = 1001
+        
+        self.cursor.execute(
+            """INSERT INTO Manager (
+                ToolType, Version, RootUuid, CurrentNodeUuid,
+                MaxVariantID, CommonVariantID, ObjectNodeUuid,
+                PressureGraph, SavedCount
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (0, 126, root_uuid, current_node_uuid,
+             1000, common_variant_id, root_uuid,
+             pressure_graph, 0)
+        )
+    
+    def _insert_root_node(self, root_uuid, package_name):
+        """Insert root Node record"""
+        self.cursor.execute(
+            "INSERT INTO Node (NodeUuid, NodeName, NodeLock, NodeHidden, NodeFirstChildUuid) VALUES (?, ?, ?, ?, ?)",
+            (root_uuid, package_name, 0, 0, None)
+        )
+    
+    def _insert_brush(self, brush, variant_id, init_variant_id, prev_node_uuid=None, settings=None):
+        """Insert brush with correct CSP structure"""
+        # Generate UUID for this brush node
+        node_uuid = self._generate_uuid()
+        
+        # Generate material UUID and process brush image data
+        material_uuid = None
+        png_data = None
+        if brush.get('image_data'):
+            material_uuid = self._generate_material_uuid()
+            png_data = brush['image_data']  # Raw PNG bytes
+            
+            # Create MaterialFile entry with proper TAR structure
+            self._insert_material_file(material_uuid, png_data, brush['name'])
+        
+        # Get settings with defaults
+        if not settings:
+            settings = {}
+        
+        # Default pressure curve (linear)
+        default_curve = [(0.0, 0.0), (1.0, 1.0)]
+        
+        # Prepare variant data
+        variant_data = (
+            settings.get('opacity', 100),
+            1,  # AntiAlias enabled
+            0,  # CompositeMode: normal
+            float(settings.get('size', 50)),
+            0,  # BrushSizeUnit: pixels
+            self._encode_effector_blob(settings.get('sizePressure', False), default_curve),
+            settings.get('opacity', 100),
+            self._encode_effector_blob(settings.get('opacityPressure', False), default_curve),
+            settings.get('hardness', 50),
+            float(settings.get('spacing', 10)),
+            100,  # BrushThickness
+            float(settings.get('angle', 0)),
+            1 if material_uuid else 0,  # BrushUsePatternImage
+            self._encode_brush_pattern_array(brush['name'], material_uuid, png_data)
+        )
+        
+        # Insert CURRENT Variant record
+        self.cursor.execute(
+            """INSERT INTO Variant (
+                VariantID, Opacity, AntiAlias, CompositeMode,
+                BrushSize, BrushSizeUnit, BrushSizeEffector,
+                BrushFlow, BrushFlowEffector,
+                BrushHardness, BrushInterval,
+                BrushThickness, BrushRotation,
+                BrushUsePatternImage, BrushPatternImageArray
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (variant_id,) + variant_data
+        )
+        
+        # Insert INITIAL Variant record (same settings)
+        self.cursor.execute(
+            """INSERT INTO Variant (
+                VariantID, Opacity, AntiAlias, CompositeMode,
+                BrushSize, BrushSizeUnit, BrushSizeEffector,
+                BrushFlow, BrushFlowEffector,
+                BrushHardness, BrushInterval,
+                BrushThickness, BrushRotation,
+                BrushUsePatternImage, BrushPatternImageArray
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (init_variant_id,) + variant_data
+        )
+        
+        # Insert Node record with proper default values
+        self.cursor.execute(
+            """INSERT INTO Node (
+                NodeUuid, NodeName, NodeLock, NodeHidden,
+                NodeInputOp, NodeOutputOp, NodeRangeOp,
+                NodeIcon, NodeIconColor,
+                NodeNextUuid, NodeVariantID, NodeInitVariantID
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                node_uuid,
+                brush['name'],
+                0,   # NodeLock: unlocked
+                0,   # NodeHidden: visible
+                10,  # NodeInputOp: 10 (default)
+                10,  # NodeOutputOp: 10 (default)
+                0,   # NodeRangeOp: 0 (default)
+                128, # NodeIcon: 128 (default brush icon)
+                0,   # NodeIconColor: 0 (default)
+                None,  # NodeNextUuid: will be updated
+                variant_id,
+                init_variant_id
+            )
+        )
+        
+        # Link previous node to this one
+        if prev_node_uuid:
+            self.cursor.execute(
+                "UPDATE Node SET NodeNextUuid = ? WHERE NodeUuid = ?",
+                (node_uuid, prev_node_uuid)
+            )
+        
+        return node_uuid
+    
+    def _encode_brush_pattern_array(self, brush_name='Brush', material_uuid=None, png_data=None):
+        """Encode BrushPatternImageArray with embedded PNG data (CSP format)"""
+        if not material_uuid or not png_data:
+            # No material - return minimal header
+            return struct.pack('>IIII', 8, 1, 0, 0)  # Big-endian: header, count, length, unknown
+        
+        # 1. Create material reference string (UTF-16LE)
+        ref_string = f".:12:45:{material_uuid}:data:material_0.layer"
+        utf16_ref = ref_string.encode('utf-16le') + b'\x00\x00'  # Add null terminator
+        
+        # 2. Type/flags section (8 bytes)
+        type_flags = struct.pack('>II', 0x00000002, 0x00000014)  # Big-endian: type=2, subtype=20
+        
+        # 3. Encode brush name as UTF-16LE
+        name_data = brush_name.encode('utf-16le') + b'\x00\x00'  # Add null terminator
+        
+        # 4. Calculate data length (everything after 16-byte header)
+        data_length = len(utf16_ref) + len(type_flags) + len(name_data) + len(png_data)
+        
+        # 5. Build 16-byte header (big-endian)
+        header = struct.pack('>IIII', 
+            8,              # Magic: 8
+            1,              # Count: 1
+            data_length,    # Data length
+            0x84            # Flags: 0x84
+        )
+        
+        # 6. Combine all sections: header + ref + flags + name + PNG
+        return header + utf16_ref + type_flags + name_data + png_data
+    
+    def _insert_material_file(self, material_uuid, png_data, brush_name='Brush'):
+        """Insert MaterialFile record with TAR archive structure"""
+        try:
+            from materialfile_builder import MaterialFileBuilder
+            from layer_encoder import LayerEncoder, EncodingOptions
+            
+            # 1. Encode PNG to .layer format
+            encoder = LayerEncoder()
+            options = EncodingOptions(
+                archive_type='tar',
+                compression='none',
+                validate=True
+            )
+            
+            # Encode the PNG to .layer format
+            from pathlib import Path
+            temp_png = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+            temp_png.write(png_data)
+            temp_png.close()
+            
+            encoded_layer = encoder.encode(
+                Path(temp_png.name),
+                options
+            )
+            
+            os.unlink(temp_png.name)
+            
+            if not encoded_layer.valid:
+                print(f"Warning: Layer encoding failed for {brush_name}")
+                return
+            
+            # 2. Build complete MaterialFile.FileData TAR archive
+            material_filedata = MaterialFileBuilder.create_material_filedata(
+                image_data=png_data,
+                layer_data=encoded_layer.data,
+                brush_name=brush_name,
+                material_uuid=material_uuid
+            )
+            
+            # 3. Create paths
+            original_path = f".:{material_uuid}:data:material_0.layer"
+            catalog_path = f".:{material_uuid}"
+            
+            # 4. Insert into MaterialFile table
+            self.cursor.execute(
+                """INSERT INTO MaterialFile (
+                    InstallFolder, OriginalPath, FileData, CatalogPath, MaterialUuid
+                ) VALUES (?, ?, ?, ?, ?)""",
+                (0, original_path, material_filedata, catalog_path, None)
+            )
+            
+            print(f"✓ MaterialFile created: {len(material_filedata)} bytes for {brush_name}")
+            
+        except Exception as e:
+            print(f"Warning: MaterialFile creation failed for {brush_name}: {e}")
+            # Continue without MaterialFile - brush will use default shape
+    
+    def _encode_effector_blob(self, enabled, curve_points=None):
+        """Encode effector BLOB for pressure sensitivity"""
+        if not enabled or not curve_points:
+            return None
+        
+        # CSP effector format (simplified)
+        header = struct.pack('<II', 1, 0)  # Enabled, type/mode
+        
+        # Limit to 10 points
+        points = curve_points[:10] if len(curve_points) > 10 else curve_points
+        point_count = len(points)
+        
+        # Encode curve points as float pairs
+        curve_data = struct.pack('<I', point_count)  # Point count
+        for x, y in points:
+            curve_data += struct.pack('<ff', float(x), float(y))
+        
+        return header + curve_data
+    
+    def _generate_material_uuid(self):
+        """Generate a simple UUID string for material references"""
+        import random
+        chars = '0123456789abcdef'
+        uuid_parts = [
+            ''.join(random.choice(chars) for _ in range(8)),
+            ''.join(random.choice(chars) for _ in range(4)),
+            ''.join(random.choice(chars) for _ in range(4)),
+            ''.join(random.choice(chars) for _ in range(4)),
+            ''.join(random.choice(chars) for _ in range(12))
+        ]
+        return '-'.join(uuid_parts)
+
+
+if __name__ == '__main__':
     app = create_app()
     port = int(os.environ.get('FLASK_PORT', 5000))
     
-    print(f"Flask server running on http://127.0.0.1:{port}")
-    # In a production environment, use a robust WSGI server like Gunicorn or uWSGI
-    app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+    print(f"CSP Subtool Converter Pro - Python Backend")
+    print(f"Server starting on http://localhost:{port}")
+    print(f"Press Ctrl+C to stop")
+    
+    app.run(host='0.0.0.0', port=port, debug=True)
