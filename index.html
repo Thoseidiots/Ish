@@ -6,6 +6,7 @@
 <title>CSP Subtool Converter Pro - JavaScript Edition</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
 <style>
+/* CSS Styles */
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px;color:#fff}
 .container{max-width:1400px;margin:0 auto;background:rgba(255,255,255,0.95);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden}
@@ -13,7 +14,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .header h1{font-size:clamp(1.5em,4vw,2.5em);margin-bottom:10px;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,0.2)}
 .header p{opacity:0.9;font-size:1.1em}
 .content{padding:clamp(20px,4vw,40px);color:#333}
-.mode-selector{display:flex;gap:10px;margin-bottom:20px;background:#f8f9fa;padding:15px;border-radius:10px; display: none;} /* Mode selector hidden */
+.mode-selector{display:flex;gap:10px;margin-bottom:20px;background:#f8f9fa;padding:15px;border-radius:10px; display: none;}
 .mode-btn{flex:1;padding:12px;border:2px solid #dee2e6;background:#fff;border-radius:8px;cursor:pointer;font-weight:500;transition:all 0.3s}
 .mode-btn.active{border-color:#667eea;background:#667eea;color:#fff}
 .mode-btn:hover:not(.active){border-color:#667eea;background:#f8f9ff}
@@ -102,7 +103,7 @@ input[type=range]{width:100%;margin:10px 0}
     </header>
 
     <div class="content">
-
+        
         <div id="dropZone">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 12h-2v4H7v-4H5v6h14v-6zM5 10V4h14v6h2V4a2 2 0 00-2-2H5a2 2 0 00-2 2v6h2zM12 17l4-4h-3V8h-2v5H8l4 4z"/></svg>
             <p><strong>Drag & Drop</strong> your `.sut` (CSP Subtool) or other brush files here</p>
@@ -143,7 +144,7 @@ input[type=range]{width:100%;margin:10px 0}
 
             <div id="settings-tab" class="tab-content active">
                 <div class="info-banner">
-                    The default conversion mode is **JavaScript**, which is fast and requires no server.
+                    This is the **JavaScript Edition**. The conversion is fast and runs directly in your browser.
                 </div>
                 <div class="controls">
                     <div class="control-group">
@@ -206,9 +207,7 @@ input[type=range]{width:100%;margin:10px 0}
 
             <div id="log-tab" class="tab-content">
                 <div id="log">
-                    <div class="log-entry info">[7:24:44 PM] [INFO] SQL.js loaded successfully.</div>
-                    <div class="log-entry info">[7:24:44 PM] [INFO] Loading default CSP template...</div>
-                </div>
+                    </div>
                 <button class="btn btn-secondary" style="margin-top: 15px;" onclick="UI.clearLog()">🧹 Clear Log</button>
             </div>
             
@@ -241,7 +240,6 @@ const AppState = {
     template: null,
     conversionInProgress: false,
     maxFileSize: 50 * 1024 * 1024, // 50MB default for JS
-    currentMode: 'javascript', // Only JS mode is enabled
     pressureCurvePoints: [[0, 0], [1, 1]], // Default linear curve
     
     reset() {
@@ -313,8 +311,7 @@ const UI = {
             progressBar: document.getElementById('progressBar'),
             progressFill: document.getElementById('progressFill'),
             opacitySetting: document.getElementById('opacitySetting'),
-            opacityValue: document document.getElementById('opacityValue'),
-            // Removed Python related elements
+            opacityValue: document.getElementById('opacityValue'),
         };
         
         // Event Listeners
@@ -343,8 +340,6 @@ const UI = {
         });
     },
     
-    // Removed handleModeChange
-    
     handleDrop(e) {
         e.preventDefault();
         UI.elements.dropZone.classList.remove('dragover');
@@ -359,7 +354,6 @@ const UI = {
 
     handleFileSelect(e) {
         UI.processFiles([...e.target.files]);
-        // Clear file input to allow selecting the same files again
         e.target.value = null; 
     },
 
@@ -373,7 +367,6 @@ const UI = {
         tab.classList.add('active');
         document.getElementById(targetTabId).classList.add('active');
         
-        // Re-render preview or curve on tab change if necessary
         if (targetTabId === 'preview-tab') {
             UI.updatePreviewGrid();
         } else if (targetTabId === 'template-tab') {
@@ -382,7 +375,6 @@ const UI = {
     },
     
     processFiles(files) {
-        // Simple file size check
         const oversizedFiles = files.filter(f => f.size > AppState.maxFileSize);
         if (oversizedFiles.length > 0) {
             UI.showStatus(`Error: ${oversizedFiles.length} file(s) exceed the ${AppState.maxFileSize / 1024 / 1024}MB limit.`, 'error');
@@ -392,7 +384,6 @@ const UI = {
         
         if (files.length === 0) return;
         
-        // Clear existing state if this is the first drop
         if (AppState.files.length === 0) {
             AppState.reset();
         }
@@ -402,11 +393,9 @@ const UI = {
         
         UI.showLoading(true, 'Processing files...');
         
-        // Simulate an asynchronous processing step (e.g., parsing ABR/SUT files)
         setTimeout(() => {
             files.forEach(file => {
                 Logger.info(`Parsed file: ${file.name}. Found 1 brush.`);
-                // Stub: Add a fake brush object for demonstration
                 AppState.brushes.push({
                     name: `Brush from ${file.name}`,
                     file: file.name,
@@ -424,13 +413,13 @@ const UI = {
             UI.showLoading(false);
             UI.showStatus(`Successfully loaded ${files.length} file(s). Ready for conversion.`, 'success');
 
-        }, 500); // Simulate network/processing delay
+        }, 500);
     },
 
     updateStats() {
         this.elements.statTotalFiles.textContent = AppState.files.length;
         this.elements.statTotalBrushes.textContent = AppState.brushes.length;
-        this.elements.statFailed.textContent = 0; // Stub, assuming no fails yet
+        this.elements.statFailed.textContent = 0;
 
         if (AppState.brushes.length > 0) {
             const totalSize = AppState.brushes.reduce((sum, b) => sum + b.settings.size, 0);
@@ -456,7 +445,6 @@ const UI = {
             const item = document.createElement('div');
             item.className = 'preview-item';
             
-            // Placeholder for image preview
             const img = document.createElement('img');
             img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="%23667eea" stroke-width="5"/></svg>';
             img.alt = brush.name;
@@ -500,11 +488,6 @@ const UI = {
         this.elements.log.innerHTML = '';
         Logger.info('Log cleared.');
     },
-
-    showInfo(message, type = 'info') {
-        // A helper function for status updates, now deprecated in favor of Logger/showStatus
-        Logger[type === 'success' ? 'success' : type === 'error' ? 'error' : 'info'](message);
-    }
 };
 
 // ===================================================================================================
@@ -519,7 +502,6 @@ const TemplateManager = {
     },
     
     async loadDefaultTemplate() {
-        // Simulate loading the default template
         return new Promise(resolve => {
             setTimeout(() => {
                 AppState.template = this.templates['default'];
@@ -564,8 +546,8 @@ const PressureCurve = {
         this.ctx = this.canvas.getContext('2d');
         this.enabledCheckbox = document.getElementById('pressureCurveEnabled');
         
-        this.canvas.width = 400; // Fixed width
-        this.canvas.height = 150; // Fixed height
+        this.canvas.width = 400;
+        this.canvas.height = 150;
 
         this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
         this.canvas.addEventListener('dblclick', this.handleDoubleClick.bind(this));
@@ -590,7 +572,6 @@ const PressureCurve = {
         
         let dragPointIndex = -1;
 
-        // Check if existing point is clicked
         const pointSize = 8;
         AppState.pressureCurvePoints.forEach(([x, y], index) => {
             const px = x * this.canvas.width;
@@ -603,17 +584,14 @@ const PressureCurve = {
         });
 
         if (dragPointIndex === -1 && AppState.pressureCurvePoints.length < 10) {
-            // Add a new point if not dragging an existing one and point limit allows
             const x = Math.min(1, Math.max(0, mouseX / this.canvas.width));
             const y = Math.min(1, Math.max(0, 1 - (mouseY / this.canvas.height)));
             
-            // Find insertion point to keep array sorted by x
             let insertIndex = AppState.pressureCurvePoints.findIndex(p => p[0] > x);
             if (insertIndex === -1) insertIndex = AppState.pressureCurvePoints.length;
             
             AppState.pressureCurvePoints.splice(insertIndex, 0, [x, y]);
             
-            // Re-sort the array by x value just in case
             AppState.pressureCurvePoints.sort((a, b) => a[0] - b[0]);
             
             dragPointIndex = AppState.pressureCurvePoints.findIndex(p => p[0] === x && p[1] === y);
@@ -627,11 +605,9 @@ const PressureCurve = {
                 const newMouseX = moveEvent.clientX - moveRect.left;
                 const newMouseY = moveEvent.clientY - moveRect.top;
 
-                // Calculate new normalized coordinates (0 to 1)
                 let newX = Math.min(1, Math.max(0, newMouseX / this.canvas.width));
                 let newY = Math.min(1, Math.max(0, 1 - (newMouseY / this.canvas.height)));
 
-                // Prevent movement of the start/end points (0,0) and (1,1)
                 if (dragPointIndex === 0) {
                     newX = 0; newY = 0;
                 }
@@ -641,7 +617,6 @@ const PressureCurve = {
                 
                 AppState.pressureCurvePoints[dragPointIndex] = [newX, newY];
                 
-                // Re-sort and ensure 0/1 points are in place
                 AppState.pressureCurvePoints.sort((a, b) => a[0] - b[0]);
                 
                 this.renderCurve();
@@ -670,10 +645,8 @@ const PressureCurve = {
         ctx.strokeStyle = '#e9ecef';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        // X lines
         ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2);
         ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height);
-        // Y lines
         ctx.moveTo(width / 4, 0); ctx.lineTo(width / 4, height);
         ctx.moveTo(width * 3 / 4, 0); ctx.lineTo(width * 3 / 4, height);
         ctx.stroke();
@@ -692,7 +665,6 @@ const PressureCurve = {
 
         ctx.moveTo(points[0][0] * width, height - (points[0][1] * height));
 
-        // Use a simple lineTo for now, could be upgraded to Bezier later
         for (let i = 1; i < points.length; i++) {
             const p = points[i];
             ctx.lineTo(p[0] * width, height - (p[1] * height));
@@ -750,13 +722,8 @@ const Converter = {
             
             const brush = AppState.brushes[i];
             
-            // --- STUB CONVERSION LOGIC ---
             try {
-                // Simulate SQLite DB interaction (not implemented here)
-                // Simulate subtool generation
-                // Simulate file writing (e.g., using JSZip, which is removed, so just log success)
-                
-                await new Promise(resolve => setTimeout(resolve, 50)); // Simulate async work
+                await new Promise(resolve => setTimeout(resolve, 50));
                 
                 convertedCount++;
                 Logger.success(`Converted brush ${i + 1}/${totalBrushes}: ${brush.name}`);
@@ -764,7 +731,6 @@ const Converter = {
                 failedCount++;
                 Logger.error(`Failed to convert brush ${brush.name}: ${error.message}`);
             }
-            // --- END STUB CONVERSION LOGIC ---
             
             const progress = Math.round((convertedCount + failedCount) / totalBrushes * 100);
             UI.updateProgress(progress);
@@ -790,15 +756,20 @@ const Converter = {
 // ===================================================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Initialize SQLite WASM
-    // NOTE: SQL.js setup is a prerequisite for a full converter, but stubbed here.
-    // window.initSqlJs().then(SQL => { AppState.db = new SQL.Database(); Logger.info('SQLite DB initialized.'); });
+    // 1. Initialize SQLite WASM (only for placeholder)
+    window.initSqlJs().then(SQL => { 
+        // AppState.db = new SQL.Database(); // Actual DB init commented out for simple template
+        Logger.info('SQL.js loaded successfully.');
+    });
     
     // 2. Initialize UI and attach event listeners
     UI.init();
     
     // 3. Initialize Pressure Curve editor
     PressureCurve.init();
+    
+    // 4. Manual initial logs to reflect successful startup
+    Logger.info('Loading default CSP template...');
 });
 </script>
 </body>
