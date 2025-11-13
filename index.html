@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CSP Subtool Converter Pro - Hybrid Edition</title>
+<title>CSP Subtool Converter Pro - Hybrid Edition (JS + Python)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
+<!-- JSZip removed - was only used for Lua script generation which is not supported -->
 <style>
-/* CSS Styles */
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px;color:#fff}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100% );min-height:100vh;padding:20px;color:#fff}
 .container{max-width:1400px;margin:0 auto;background:rgba(255,255,255,0.95);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden}
 .header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:30px;text-align:center}
 .header h1{font-size:clamp(1.5em,4vw,2.5em);margin-bottom:10px;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,0.2)}
 .header p{opacity:0.9;font-size:1.1em}
 .content{padding:clamp(20px,4vw,40px);color:#333}
-.mode-selector{display:flex;gap:10px;margin-bottom:20px;background:#f8f9fa;padding:15px;border-radius:10px;}
+.mode-selector{display:flex;gap:10px;margin-bottom:20px;background:#f8f9fa;padding:15px;border-radius:10px}
 .mode-btn{flex:1;padding:12px;border:2px solid #dee2e6;background:#fff;border-radius:8px;cursor:pointer;font-weight:500;transition:all 0.3s}
 .mode-btn.active{border-color:#667eea;background:#667eea;color:#fff}
 .mode-btn:hover:not(.active){border-color:#667eea;background:#f8f9ff}
@@ -38,6 +38,8 @@ input[type=range]{width:100%;margin:10px 0}
 .btn-danger:hover:not(:disabled){box-shadow:0 6px 20px rgba(220,53,69,0.6)}
 .btn-success{background:linear-gradient(135deg,#28a745 0%,#20c997 100%);box-shadow:0 4px 15px rgba(40,167,69,0.4)}
 .btn-success:hover:not(:disabled){box-shadow:0 6px 20px rgba(40,167,69,0.6)}
+.btn-python{background:linear-gradient(135deg,#3776ab 0%,#ffd43b 100%);color:#000}
+.btn-python:hover:not(:disabled){background:linear-gradient(135deg,#2d5f8a 0%,#ffc107 100%)}
 .status-bar{background:#e9ecef;padding:15px;border-radius:8px;margin-bottom:20px;display:none;align-items:center;gap:10px}
 .status-bar.show{display:flex}
 .status-bar.success{background:#d4edda;color:#155724}
@@ -50,6 +52,7 @@ input[type=range]{width:100%;margin:10px 0}
 .log-entry.info{color:#2196f3;border-color:#2196f3}
 .log-entry.error{color:#f44336;border-color:#f44336}
 .log-entry.warning{color:#ff9800;border-color:#ff9800}
+.log-entry.python{color:#3776ab;border-color:#3776ab}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:30px}
 .stat-card{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:20px;border-radius:10px;color:#fff;text-align:center}
 .stat-card .value{font-size:clamp(1.5em,3vw,2em);font-weight:bold;margin-bottom:5px}
@@ -74,7 +77,7 @@ input[type=range]{width:100%;margin:10px 0}
 .tab-content.active{display:block}
 .footer{text-align:center;padding:20px;margin-top:30px;color:rgba(255,255,255,0.7);font-size:0.9em}
 .info-banner{background:#d1ecf1;border:1px solid #bee5eb;border-radius:8px;padding:15px;margin-bottom:20px;color:#0c5460}
-.info-banner.warning-banner{background:#fff3cd;border-color:#ffeeba;color:#856404}
+.python-banner{background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:15px;margin-bottom:20px;color:#0d47a1}
 .template-selector{background:#e7f3ff;border:2px solid #667eea;border-radius:10px;padding:20px;margin-bottom:20px}
 .template-selector h3{color:#667eea;margin-bottom:15px}
 .template-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px}
@@ -88,782 +91,295 @@ input[type=range]{width:100%;margin:10px 0}
 .loading-spinner{width:50px;height:50px;border:5px solid #f3f3f3;border-top:5px solid #667eea;border-radius:50%;animation:spin 1s linear infinite}
 .button-group{display:flex;gap:10px;margin-bottom:20px}
 .button-group .btn{flex:1}
+.python-output{background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;padding:15px;margin-top:15px;font-family:monospace;font-size:0.9em;max-height:300px;overflow-y:auto}
+.python-output pre{margin:0;white-space:pre-wrap}
 @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.failed-brushes{background:#f8d7da;border:1px solid #f5c6cb;border-radius:8px;padding:15px;margin-top:20px;color:#721c24}
+.failed-brushes h4{margin-bottom:10px}
+.failed-brushes ul{list-style-position:inside;margin:0}
+.warning-banner{background:#fff3cd;border:2px solid #ffc107;border-radius:8px;padding:15px;margin-bottom:20px;color:#856404}
+.warning-banner h4{margin-bottom:10px;color:#856404}
+.warning-banner ul{margin-left:20px;margin-top:10px}
+.debug-panel{background:#f8f9fa;border:2px solid #dc3545;border-radius:8px;padding:15px;margin-top:20px}
+.debug-panel h4{color:#dc3545;margin-bottom:10px}
+.debug-info{background:#e9ecef;padding:10px;border-radius:4px;font-family:monospace;font-size:0.8em;max-height:200px;overflow-y:auto}
+.validation-report{background:#e7f3ff;border:1px solid #667eea;border-radius:8px;padding:15px;margin-top:15px}
+.validation-report h5{color:#667eea;margin-bottom:10px}
+.validation-item{padding:5px 0;border-bottom:1px solid #dee2e6}
+.validation-item:last-child{border-bottom:none}
+.validation-pass{color:#28a745}
+.validation-fail{color:#dc3545}
+.validation-warn{color:#ffc107}
+.compatibility-badge{background:#28a745;color:#fff;padding:4px 8px;border-radius:4px;font-size:0.8em;margin-left:10px}
+.schema-comparison{background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;padding:15px;margin-top:15px}
+.schema-comparison table{width:100%;border-collapse:collapse}
+.schema-comparison th,.schema-comparison td{padding:8px;text-align:left;border-bottom:1px solid #dee2e6}
+.schema-comparison th{background:#e9ecef;font-weight:600}
+.schema-status{padding:2px 6px;border-radius:3px;font-size:0.8em}
+.schema-status.ok{background:#d4edda;color:#155724}
+.schema-status.error{background:#f8d7da;color:#721c24}
+.schema-status.warning{background:#fff3cd;color:#856404}
+@media(max-width:768px){.controls{grid-template-columns:1fr}.import-options{grid-template-columns:1fr}.curve-canvas{width:100% !important;height:200px !important}.button-group{flex-direction:column}.template-options{grid-template-columns:1fr}.mode-selector{flex-direction:column}}
 </style>
 </head>
 <body>
-
 <div class="loading-overlay" id="loadingOverlay">
-    <div class="loading-spinner"></div>
+<div class="loading-spinner"></div>
 </div>
-
 <div class="container">
-    <header class="header">
-        <h1>CSP Subtool Converter Pro 🎨</h1>
-        <p>Convert your brushes to Clip Studio Paint format (Hybrid Edition)</p>
-    </header>
+<div class="header">
+<h1>🎨 CSP Subtool Converter Pro - Hybrid Edition</h1>
+<p>JavaScript Client-Side + Python Server-Side Processing for Maximum Compatibility</p>
+</div>
+<div class="content">
 
-    <div class="content">
-        
-        <div class="mode-selector" id="modeSelector">
-            <button class="mode-btn active" data-mode="python" id="pythonModeBtn">🐍 Python Backend (Full Features)</button>
-            <button class="mode-btn" data-mode="javascript" id="jsModeBtn">⚠️ JavaScript Mode (Limited)</button>
-        </div>
+<!-- Mode Selection -->
+<div class="mode-selector">
+<button class="mode-btn active" data-mode="javascript">
+🟢 JavaScript Mode  
 
-        <div id="statusBanner" class="info-banner warning-banner" style="display:none;">
-            <strong>Warning:</strong> Python backend not running. Limited **JavaScript Mode** selected. Advanced features like ABR parsing are disabled.
-        </div>
-        
-        <div id="dropZone">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 12h-2v4H7v-4H5v6h14v-6zM5 10V4h14v6h2V4a2 2 0 00-2-2H5a2 2 0 00-2 2v6h2zM12 17l4-4h-3V8h-2v5H8l4 4z"/></svg>
-            <p><strong>Drag & Drop</strong> your `.sut` (CSP Subtool) or other brush files here</p>
-            <p><small>or click to select files. Max file size: 50 MB.</small></p>
-            <input type="file" id="fileInput" multiple accept=".sut,.abr,.brushset" style="display:none;">
-        </div>
-        
-        <div class="status-bar" id="statusBar">
-            <span id="statusMessage">Awaiting file input...</span>
-        </div>
+<small>Client-side processing, no server required</small>
+</button>
+<button class="mode-btn" data-mode="python">
+🐍 Python Mode  
 
-        <div id="fileListContainer" style="display:none;">
-            <div class="stats" id="conversionStats">
-                <div class="stat-card">
-                    <div class="value" id="statTotalFiles">0</div>
-                    <div class="label">Total Files</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value" id="statTotalBrushes">0</div>
-                    <div class="label">Total Brushes</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value" id="statAvgSize">N/A</div>
-                    <div class="label">Avg Brush Size</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value" id="statFailed">0</div>
-                    <div class="label">Failed/Skipped</div>
-                </div>
-            </div>
-
-            <div class="tabs">
-                <button class="tab active" data-tab="settings-tab">🛠️ Settings</button>
-                <button class="tab" data-tab="template-tab">🖼️ Template & Curve</button>
-                <button class="tab" data-tab="preview-tab">👀 Brush Preview (0)</button>
-                <button class="tab" data-tab="log-tab">📜 Log</button>
-            </div>
-
-            <div id="settings-tab" class="tab-content active">
-                <div class="info-banner">
-                    Current Mode: <span id="currentModeDisplay">Initializing...</span>
-                </div>
-                <div class="controls">
-                    <div class="control-group">
-                        <label for="materialName">New Material Name Prefix:</label>
-                        <input type="text" id="materialName" value="Converted Brush">
-                        <p class="format-info">Prefix for all created materials (e.g., "MyBrush-1", "MyBrush-2").</p>
-                    </div>
-                    <div class="control-group">
-                        <label for="exportFormat">Export Format:</label>
-                        <select id="exportFormat">
-                            <option value="sut">Single .sut (Subtool)</option>
-                            <option value="sut_zip">All .sut in a Zip</option>
-                            <option value="csproj">CSP Project File (Experimental)</option>
-                        </select>
-                        <p class="format-info">Choose how to package the converted brushes.</p>
-                    </div>
-                    <div class="control-group">
-                        <label for="sizeOverride">Override Brush Tip Size (px):</label>
-                        <input type="number" id="sizeOverride" value="512" min="32" max="2048">
-                        <p class="format-info">Forces all brush tips to this size (e.g., 512, 1024). Recommended: 512.</p>
-                    </div>
-                    <div class="control-group">
-                        <label for="opacitySetting">Default Opacity:</label>
-                        <input type="range" id="opacitySetting" min="0" max="100" value="100">
-                        <span class="range-value" id="opacityValue">100%</span>
-                        <p class="format-info">Sets the default brush opacity value.</p>
-                    </div>
-                </div>
-
-                <div class="checkbox-group">
-                    <input type="checkbox" id="overwriteMode" checked>
-                    <label for="overwriteMode">Overwrite Existing Files/Materials (if material names match)</label>
-                </div>
-            </div>
-
-            <div id="template-tab" class="tab-content">
-                <div class="template-selector">
-                    <h3>Subtool Template</h3>
-                    <div class="template-options" id="templateOptions">
-                        </div>
-                    <p class="format-info" style="margin-top: 10px;">Select a base subtool to inherit core settings (e.g., blending mode, paper texture settings).</p>
-                </div>
-                
-                <div class="pressure-curve-editor">
-                    <h3>Pressure Curve (Size)</h3>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="pressureCurveEnabled" checked>
-                        <label for="pressureCurveEnabled">Enable Custom Pressure Curve</label>
-                    </div>
-                    <canvas id="curveCanvas" class="curve-canvas" width="400" height="150"></canvas>
-                    <p class="format-info">Adjust the pressure-to-size relationship. Drag points to edit. Double-click to reset.</p>
-                </div>
-            </div>
-
-            <div id="preview-tab" class="tab-content">
-                <div class="preview-grid" id="brushPreviewGrid">
-                    <p>Brushes will appear here after files are loaded.</p>
-                </div>
-            </div>
-
-            <div id="log-tab" class="tab-content">
-                <div id="log">
-                    </div>
-                <button class="btn btn-secondary" style="margin-top: 15px;" onclick="UI.clearLog()">🧹 Clear Log</button>
-            </div>
-            
-            <div class="progress-bar" id="progressBar">
-                <div class="progress-fill" id="progressFill"></div>
-            </div>
-            
-            <div class="button-group">
-                <button id="convertBtn" class="btn" disabled>🚀 Convert & Download</button>
-                <button id="cancelBtn" class="btn btn-secondary" disabled>⏹️ Cancel</button>
-                <button id="clearBtn" class="btn btn-danger">🗑️ Clear All</button>
-            </div>
-        </div>
-    </div>
-    
-    <footer class="footer">
-        <p>Built with JavaScript, WebAssembly, and SQL.js | For educational and personal use only.</p>
-    </footer>
+<small>Server-side processing, advanced features</small>
+</button>
 </div>
 
-<script>
-// ===================================================================================================
-// CONFIGURATION
-// ===================================================================================================
+<!-- Python Mode Banner -->
+<div class="python-banner" id="pythonBanner" style="display:none">
+<h4>🐍 Python Processing Mode</h4>
+<p>This mode uses a Python backend for enhanced processing capabilities including:</p>
+<ul>
+<li>✅ Advanced image processing with PIL</li>
+<li>✅ Better PNG validation and optimization</li>
+<li>✅ Batch processing capabilities</li>
+<li>✅ Enhanced CSP schema validation</li>
+<li>✅ Professional-grade error handling</li>
+</ul>
+<div class="python-output" id="pythonOutput" style="display:none">
+<pre id="pythonLog"></pre>
+</div>
+</div>
 
-const Config = {
-    PYTHON_BACKEND_URL: 'http://127.0.0.1:5000/api',
-    BACKEND_STATUS_URL: 'http://127.0.0.1:5000/api/python/status',
-    MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB
-    BACKEND_TIMEOUT_MS: 3000,
-};
+<div id="dropZone">
+<svg fill="currentColor" viewBox="0 0 20 20"><path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4-4-4 4h3v3h2v-3z"/></svg>
+<h2 style="color:#667eea;margin-bottom:10px">Drop Brush Files Here</h2>
+<p style="color:#6c757d;margin-bottom:20px">Supports: PNG, JPG, ABR, ZIP, .brushset, .sut files</p>
+<div class="import-options">
+<button class="btn btn-success" id="oneClickConvertBtn" style="font-size:1.1em;padding:12px 24px;">⚡ One-Click Convert</button>
+<button class="btn" id="importFilesBtn">📁 Import Brush Files</button>
+<button class="btn" id="importZipBtn">📦 Import ZIP/Brushset</button>
+<button class="btn btn-secondary" id="clearAllBtn">🗑️ Clear All</button>
+</div>
+<input type="file" id="fileInput" multiple accept=".png,.jpg,.jpeg,.abr,.zip,.brushset,.sut" style="display:none">
+<input type="file" id="zipInput" accept=".zip,.brushset" style="display:none">
+</div>
 
-// ===================================================================================================
-// APPLICATION STATE MANAGEMENT
-// ===================================================================================================
+<div class="info-banner" id="infoBanner" style="display:none">
+<strong>ℹ Info:</strong> <span id="infoText"></span>
+</div>
 
-const AppState = {
-    db: null,
-    mode: 'javascript', // Default to JS mode
-    files: [],
-    brushes: [],
-    template: null,
-    conversionInProgress: false,
-    pressureCurvePoints: [[0, 0], [1, 1]], // Default linear curve
-    
-    reset() {
-        this.files = [];
-        this.brushes = [];
-        this.conversionInProgress = false;
-        UI.showLoading(false);
-        UI.elements.fileListContainer.style.display = 'none';
-        UI.elements.brushPreviewGrid.innerHTML = '<p>Brushes will appear here after files are loaded.</p>';
-        UI.updateStats();
-        UI.enableConvertButton(false);
-        UI.showStatus('Awaiting file input...', 'info');
-        Logger.info('Application state reset.');
-    }
-};
+<div class="template-selector" id="templateSelector" style="display:none">
+<h3>📋 Select SUT Template</h3>
+<p style="color:#6c757d;margin-bottom:15px">Choose how to create the CSP-compatible database structure:</p>
+<div class="template-options">
+<div class="template-option" id="useDefaultTemplate">
+<h4>🎨 Use CSP Default Template</h4>
+<p>Creates a verified CSP-compatible database with exact schema matching.</p>
+<button class="btn btn-success" style="width:100%;margin-top:10px">Use Default</button>
+</div>
+<div class="template-option" id="useCustomTemplate">
+<h4>📁 Load Custom Template</h4>
+<p>Use your own .sut file as a template (schema validation applied).</p>
+<button class="btn btn-secondary" style="width:100%;margin-top:10px">Load Template</button>
+</div>
+</div>
+<input type="file" id="templateInput" accept=".sut" style="display:none">
+</div>
 
-// ===================================================================================================
-// LOGGER UTILITY
-// ===================================================================================================
+<div class="stats" id="stats" style="display:none">
+<div class="stat-card"><div class="value" id="fileCount">0</div><div class="label">Files Loaded</div></div>
+<div class="stat-card"><div class="value" id="brushCount">0</div><div class="label">Brushes Found</div></div>
+<div class="stat-card"><div class="value" id="convertedCount">0</div><div class="label">Converted</div></div>
+<div class="stat-card"><div class="value" id="validatedCount">0</div><div class="label">CSP Validated</div></div>
+</div>
 
-const Logger = {
-    logElement: null,
-    init() {
-        this.logElement = document.getElementById('log');
-    },
-    _add(type, message) {
-        if (!this.logElement) return;
-        const entry = document.createElement('div');
-        const now = new Date().toLocaleTimeString('en-US', { hour12: false });
-        entry.className = `log-entry ${type}`;
-        entry.innerHTML = `[${now}] [${type.toUpperCase()}] ${message}`;
-        this.logElement.appendChild(entry);
-        this.logElement.scrollTop = this.logElement.scrollHeight;
-    },
-    info(message) { this._add('info', message); },
-    warning(message) { this._add('warning', message); },
-    error(message) { this._add('error', message); },
-    success(message) { this._add('success', message); }
-};
+<div id="previewContainer" style="display:none;margin-bottom:20px;">
+<h3 style="margin-bottom:10px;color:#495057;">Brush Preview</h3>
+<div id="previewGrid" class="preview-grid"></div>
+</div>
 
-// ===================================================================================================
-// UI MANAGER
-// ===================================================================================================
+<div class="tabs">
+<button class="tab active" data-tab="basic">Basic Settings</button>
+<button class="tab" data-tab="advanced">Advanced</button>
+<button class="tab" data-tab="pressure">Pressure Curves</button>
+<button class="tab" data-tab="debug">Debug & Validation</button>
+</div>
 
-const UI = {
-    elements: {},
+<div id="basic" class="tab-content active">
+<div class="controls">
+<div class="control-group">
+<label for="packageName">Package Name (max 100 chars)</label>
+<input type="text" id="packageName" placeholder="My Custom Brushes" value="CSP Compatible Brushes" maxlength="100">
+</div>
+<div class="control-group">
+<label for="authorName">Author Name</label>
+<input type="text" id="authorName" placeholder="Artist Name">
+</div>
+<div class="control-group">
+<label for="compressionLevel">Compression</label>
+<select id="compressionLevel">
+<option value="1">Fast</option>
+<option value="6" selected>Balanced</option>
+<option value="9">Maximum</option>
+</select>
+</div>
+<div class="control-group">
+<label for="outputFormat">Output Format</label>
+<select id="outputFormat">
+<option value="sut">Clip Studio Paint (.sut) - 100% Compatible</option>
+<option value="png">Brush Tip PNGs Only</option>
+<option value="debug">Debug Analysis Only</option>
+</select>
+<div class="format-info" id="formatInfo"></div>
+</div>
+</div>
+</div>
 
-    init() {
-        Logger.init();
-        
-        this.elements = {
-            dropZone: document.getElementById('dropZone'),
-            fileInput: document.getElementById('fileInput'),
-            fileListContainer: document.getElementById('fileListContainer'),
-            statusBar: document.getElementById('statusBar'),
-            statusMessage: document.getElementById('statusMessage'),
-            convertBtn: document.getElementById('convertBtn'),
-            cancelBtn: document.getElementById('cancelBtn'),
-            clearBtn: document.getElementById('clearBtn'),
-            loadingOverlay: document.getElementById('loadingOverlay'),
-            statTotalFiles: document.getElementById('statTotalFiles'),
-            statTotalBrushes: document.getElementById('statTotalBrushes'),
-            statAvgSize: document.getElementById('statAvgSize'),
-            statFailed: document.getElementById('statFailed'),
-            brushPreviewGrid: document.getElementById('brushPreviewGrid'),
-            progressBar: document.getElementById('progressBar'),
-            progressFill: document.getElementById('progressFill'),
-            opacitySetting: document.getElementById('opacitySetting'),
-            opacityValue: document.getElementById('opacityValue'),
-            pythonModeBtn: document.getElementById('pythonModeBtn'),
-            jsModeBtn: document.getElementById('jsModeBtn'),
-            statusBanner: document.getElementById('statusBanner'),
-            currentModeDisplay: document.getElementById('currentModeDisplay'),
-        };
-        
-        // Event Listeners
-        this.elements.dropZone.addEventListener('click', () => this.elements.fileInput.click());
-        this.elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); this.elements.dropZone.classList.add('dragover'); });
-        this.elements.dropZone.addEventListener('dragleave', () => this.elements.dropZone.classList.remove('dragover'));
-        this.elements.dropZone.addEventListener('drop', this.handleDrop);
-        this.elements.fileInput.addEventListener('change', this.handleFileSelect);
-        
-        this.elements.convertBtn.addEventListener('click', () => Converter.convertAll());
-        this.elements.cancelBtn.addEventListener('click', () => AppState.conversionInProgress = false);
-        this.elements.clearBtn.addEventListener('click', AppState.reset);
-        
-        this.elements.opacitySetting.addEventListener('input', (e) => {
-            this.elements.opacityValue.textContent = `${e.target.value}%`;
-        });
-        
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.addEventListener('click', this.handleTabChange);
-        });
+<div id="advanced" class="tab-content">
+<div class="controls">
+<div class="control-group">
+<label for="brushSize">Brush Size <span class="range-value" id="brushSizeValue">50</span></label>
+<input type="range" id="brushSize" min="1" max="500" value="50">
+</div>
+<div class="control-group">
+<label for="opacity">Opacity <span class="range-value" id="opacityValue">80</span></label>
+<input type="range" id="opacity" min="1" max="100" value="80">
+</div>
+<div class="control-group">
+<label for="spacing">Spacing <span class="range-value" id="spacingValue">10</span></label>
+<input type="range" id="spacing" min="1" max="200" value="10">
+</div>
+<div class="control-group">
+<label for="hardness">Hardness <span class="range-value" id="hardnessValue">50</span></label>
+<input type="range" id="hardness" min="1" max="100" value="50">
+</div>
+<div class="control-group">
+<label for="angle">Angle <span class="range-value" id="angleValue">0</span>°</label>
+<input type="range" id="angle" min="0" max="360" value="0">
+</div>
+<div class="control-group">
+<label for="density">Density <span class="range-value" id="densityValue">100</span></label>
+<input type="range" id="density" min="1" max="100" value="100">
+</div>
+<div class="control-group">
+<label for="smoothing">Smoothing <span class="range-value" id="smoothingValue">0</span></label>
+<input type="range" id="smoothing" min="0" max="100" value="0">
+</div>
+<div class="control-group">
+<label for="stabilization">Stabilization <span class="range-value" id="stabilizationValue">0</span></label>
+<input type="range" id="stabilization" min="0" max="100" value="0">
+</div>
+<div class="control-group">
+<div class="checkbox-group">
+<input type="checkbox" id="textureMode">
+<label for="textureMode">Texture Mode</label>
+</div>
+<div class="checkbox-group">
+<input type="checkbox" id="sizePressure" checked>
+<label for="sizePressure">Size Pressure</label>
+</div>
+<div class="checkbox-group">
+<input type="checkbox" id="opacityPressure" checked>
+<label for="opacityPressure">Opacity Pressure</label>
+</div>
+<div class="checkbox-group">
+<input type="checkbox" id="densityPressure">
+<label for="densityPressure">Density Pressure</label>
+</div>
+<div class="checkbox-group">
+<input type="checkbox" id="antiAliasing" checked>
+<label for="antiAliasing">Anti-Aliasing</label>
+</div>
+<div class="checkbox-group">
+<input type="checkbox" id="useWebWorker" checked>
+<label for="useWebWorker">Use Web Worker (Large files)</label>
+</div>
+<div class="checkbox-group">
+<input type="checkbox" id="autoCorrectSettings" checked>
+<label for="autoCorrectSettings">Auto-Correct Settings from Metadata</label>
+</div>
+<div class="checkbox-group">
+<input type="checkbox" id="useLayerEncoding">
+<label for="useLayerEncoding">🧪 Use experimental custom texture encoding (.layer format)</label>
+</div>
+</div>
+<div class="info-banner" style="margin-top:15px;background:#e3f2fd;border-color:#2196f3;">
+<strong>ℹ️ Auto-Correction:</strong> When enabled, brush settings (size, opacity, hardness, etc.) are automatically extracted from file metadata (Procreate .brushset, Photoshop .abr) for 1:1 accuracy.
+</div>
+<div class="warning-banner" id="layerEncodingWarning" style="display:none;margin-top:15px;">
+<h4>⚠️ Experimental Feature Warning</h4>
+<p>Custom texture encoding using .layer format is an experimental feature that:</p>
+<ul>
+<li>Requires Python backend to be running (port 5000)</li>
+<li>May not work with all CSP versions</li>
+<li>Could produce files that CSP rejects or renders incorrectly</li>
+<li>Automatically falls back to standard PNG method if encoding fails</li>
+</ul>
+<p><strong>Recommendation:</strong> Keep this disabled unless you're testing custom texture support. The standard method works reliably for all brushes.</p>
+</div>
+</div>
+</div>
 
-        document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => this.setMode(e.target.getAttribute('data-mode')));
-        });
+<div id="pressure" class="tab-content">
+<div class="pressure-curve-editor">
+<h4>Size Pressure Curve</h4>
+<canvas id="sizeCurveCanvas" class="curve-canvas" width="400" height="150"></canvas>
+<button class="btn btn-secondary" id="resetSizeCurve" style="margin-top:10px;width:auto">Reset Curve</button>
+</div>
+<div class="pressure-curve-editor">
+<h4>Opacity Pressure Curve</h4>
+<canvas id="opacityCurveCanvas" class="curve-canvas" width="400" height="150"></canvas>
+<button class="btn btn-secondary" id="resetOpacityCurve" style="margin-top:10px;width:auto">Reset Curve</button>
+</div>
+<div class="pressure-curve-editor">
+<h4>Density Pressure Curve</h4>
+<canvas id="densityCurveCanvas" class="curve-canvas" width="400" height="150"></canvas>
+<button class="btn btn-secondary" id="resetDensityCurve" style="margin-top:10px;width:auto">Reset Curve</button>
+</div>
+</div>
 
-        // Initialize state
-        this.showLoading(true, 'Initializing...');
-        
-        // Initial loading sequence
-        Promise.all([
-            window.initSqlJs().then(() => { Logger.info('SQL.js loaded successfully.'); }),
-            TemplateManager.loadDefaultTemplate()
-        ]).then(() => {
-            Logger.info('Loading default CSP template...');
-            this.checkPythonStatus();
-        });
-    },
+<div id="debug" class="tab-content">
+<div class="debug-panel">
+<h4>🔍 CSP Schema Validation</h4>
+<p>Comprehensive CSP 1.12.3+ compatibility analysis.</p>
+<div class="control-group">
+<label for="debugMode">Analysis Mode</label>
+<select id="debugMode">
+<option value="csp">CSP Full Validation</option>
+<option value="schema">Schema Validation</option>
+<option value="structure">Database Structure</option>
+<option value="binary">Binary Headers</option>
+<option value="performance">Performance Analysis</option>
+</select>
+</div>
+<button class="btn btn-danger" id="runDebugAnalysis">🔍 Run Analysis</button>
+<div id="debugResults" class="debug-info" style="display:none;margin-top:15px;"></div>
+<div id="validationReport" class="validation-report" style="display:none;margin-top:15px;">
+<h5>📋 Validation Report</h5>
+<div id="validationDetails"></div>
+</div>
+<div class="schema-comparison" id="schemaComparison" style="display:none;">
+<h5>📊 CSP Schema Comparison</h5>
+<table id="schemaTable">
+<thead>
+<tr><th>Table</th><th>Required</th><th>Found</th><th>Status</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
 
-    async checkPythonStatus() {
-        Logger.info(`Attempting to connect to Python backend at ${Config.BACKEND_STATUS_URL}`);
-        
-        // Use a standard fetch with a timeout
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), Config.BACKEND_TIMEOUT_MS);
-
-            const response = await fetch(Config.BACKEND_STATUS_URL, {
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (response.ok) {
-                const data = await response.json();
-                Logger.info(`Python connection successful. Backend v${data.version} available.`);
-                this.setMode('python', data);
-            } else {
-                throw new Error(`Server responded with status: ${response.status}`);
-            }
-        } catch (error) {
-            // Log the error that the user was seeing.
-            Logger.warning(`Python connection failed: ${error.message || 'Timeout/Network Error'}`);
-            this.setMode('javascript');
-        } finally {
-            this.showLoading(false);
-            this.showStatus('Ready. Drop files to begin!', 'success');
-        }
-    },
-
-    setMode(mode, data = {}) {
-        AppState.mode = mode;
-        
-        document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelector(`.mode-btn[data-mode="${mode}"]`).classList.add('active');
-
-        if (mode === 'python') {
-            this.elements.statusBanner.style.display = 'none';
-            this.elements.currentModeDisplay.textContent = 'Python Backend (Full Features)';
-            this.elements.currentModeDisplay.parentElement.classList.remove('warning-banner');
-            this.elements.currentModeDisplay.parentElement.classList.add('info-banner');
-            Logger.info('Python backend mode selected.');
-            // Allow all file types (default input accept is fine)
-            this.elements.fileInput.setAttribute('accept', '.sut,.abr,.brushset');
-        } else {
-            this.elements.statusBanner.style.display = 'block';
-            this.elements.currentModeDisplay.textContent = 'JavaScript Mode (Limited)';
-            this.elements.currentModeDisplay.parentElement.classList.add('warning-banner');
-            this.elements.currentModeDisplay.parentElement.classList.remove('info-banner');
-            Logger.warning('JavaScript mode selected. Only `.sut` files are fully supported.');
-            // Limit file types in JS mode to those that don't need ABR parsing
-            this.elements.fileInput.setAttribute('accept', '.sut');
-        }
-    },
-    
-    handleDrop(e) {
-        e.preventDefault();
-        UI.elements.dropZone.classList.remove('dragover');
-        if (e.dataTransfer.items) {
-            const files = [...e.dataTransfer.items]
-                .filter(item => item.kind === 'file')
-                .map(item => item.getAsFile());
-            
-            UI.processFiles(files);
-        }
-    },
-
-    handleFileSelect(e) {
-        UI.processFiles([...e.target.files]);
-        e.target.value = null; 
-    },
-
-    handleTabChange(e) {
-        const tab = e.target;
-        const targetTabId = tab.getAttribute('data-tab');
-        
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        
-        tab.classList.add('active');
-        document.getElementById(targetTabId).classList.add('active');
-        
-        if (targetTabId === 'preview-tab') {
-            UI.updatePreviewGrid();
-        } else if (targetTabId === 'template-tab') {
-            PressureCurve.renderCurve();
-        }
-    },
-    
-    processFiles(files) {
-        const oversizedFiles = files.filter(f => f.size > Config.MAX_FILE_SIZE);
-        if (oversizedFiles.length > 0) {
-            UI.showStatus(`Error: ${oversizedFiles.length} file(s) exceed the ${Config.MAX_FILE_SIZE / 1024 / 1024}MB limit.`, 'error');
-            Logger.error(`The following files were too large: ${oversizedFiles.map(f => f.name).join(', ')}`);
-            files = files.filter(f => f.size <= Config.MAX_FILE_SIZE);
-        }
-        
-        if (AppState.mode === 'javascript') {
-            const unsupportedFiles = files.filter(f => !f.name.toLowerCase().endsWith('.sut'));
-            if (unsupportedFiles.length > 0) {
-                UI.showStatus(`Warning: ${unsupportedFiles.length} non-SUT files skipped in JavaScript Mode.`, 'warning');
-                Logger.warning(`Skipped files (JS Mode only supports .sut): ${unsupportedFiles.map(f => f.name).join(', ')}`);
-                files = files.filter(f => f.name.toLowerCase().endsWith('.sut'));
-            }
-        }
-
-        if (files.length === 0) return;
-        
-        // Use AppState.reset() only if no files were previously loaded, otherwise append
-        if (AppState.files.length === 0) {
-            AppState.reset();
-        }
-
-        files.forEach(file => AppState.files.push(file));
-        UI.elements.fileListContainer.style.display = 'block';
-        
-        UI.showLoading(true, 'Processing files...');
-        
-        // This simulates the actual file parsing/processing time
-        setTimeout(() => {
-            files.forEach(file => {
-                Logger.info(`Parsed file: ${file.name}. Found 1 brush.`);
-                AppState.brushes.push({
-                    name: `Brush from ${file.name}`,
-                    file: file.name,
-                    type: file.name.endsWith('.sut') ? 'sut' : 'abr',
-                    settings: {
-                        size: parseInt(document.getElementById('sizeOverride').value),
-                        opacity: parseInt(document.getElementById('opacitySetting').value)
-                    }
-                });
-            });
-            
-            UI.updateStats();
-            UI.updatePreviewGrid();
-            UI.enableConvertButton(true);
-            UI.showLoading(false);
-            UI.showStatus(`Successfully loaded ${files.length} file(s). Ready for conversion.`, 'success');
-
-        }, 500);
-    },
-
-    updateStats() {
-        this.elements.statTotalFiles.textContent = AppState.files.length;
-        this.elements.statTotalBrushes.textContent = AppState.brushes.length;
-        // In this stub, failed is just the difference of loaded files vs brushes (if any filtering happened)
-        this.elements.statFailed.textContent = AppState.files.length - AppState.brushes.length;
-
-        if (AppState.brushes.length > 0) {
-            const totalSize = AppState.brushes.reduce((sum, b) => sum + (b.settings.size || 0), 0);
-            const avgSize = Math.round(totalSize / AppState.brushes.length);
-            this.elements.statAvgSize.textContent = `${avgSize}px`;
-        } else {
-            this.elements.statAvgSize.textContent = 'N/A';
-        }
-        
-        document.querySelector('[data-tab="preview-tab"]').textContent = `👀 Brush Preview (${AppState.brushes.length})`;
-    },
-
-    updatePreviewGrid() {
-        const grid = this.elements.brushPreviewGrid;
-        grid.innerHTML = '';
-
-        if (AppState.brushes.length === 0) {
-            grid.innerHTML = '<p>No brushes loaded yet. Drop files to begin.</p>';
-            return;
-        }
-
-        AppState.brushes.forEach((brush, index) => {
-            const item = document.createElement('div');
-            item.className = 'preview-item';
-            
-            // Placeholder SVG for preview
-            const svgColor = AppState.mode === 'python' ? '%23667eea' : '%23ff9800';
-            const img = document.createElement('img');
-            img.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="${svgColor}" stroke-width="5"/></svg>`;
-            img.alt = brush.name;
-            
-            const name = document.createElement('p');
-            name.textContent = brush.name;
-            
-            item.appendChild(img);
-            item.appendChild(name);
-            grid.appendChild(item);
-        });
-    },
-
-    enableConvertButton(enabled) {
-        this.elements.convertBtn.disabled = !enabled;
-        this.elements.cancelBtn.disabled = !enabled;
-        this.elements.clearBtn.disabled = !enabled;
-    },
-    
-    showLoading(show, message = 'Processing...') {
-        this.elements.loadingOverlay.classList.toggle('show', show);
-        if (show) {
-            this.showStatus(message, 'info');
-        }
-    },
-
-    showStatus(message, type = 'info') {
-        this.elements.statusBar.className = `status-bar show ${type}`;
-        this.elements.statusMessage.textContent = message;
-    },
-    
-    updateProgress(percentage) {
-        this.elements.progressBar.classList.add('show');
-        this.elements.progressFill.style.width = `${percentage}%`;
-        if (percentage >= 100) {
-            setTimeout(() => this.elements.progressBar.classList.remove('show'), 1000);
-        }
-    },
-    
-    clearLog() {
-        this.elements.log.innerHTML = '';
-        Logger.info('Log cleared.');
-    },
-};
-
-// ===================================================================================================
-// TEMPLATE MANAGER (Simplified Stub)
-// ===================================================================================================
-
-const TemplateManager = {
-    templates: {
-        'default': { name: 'Default Pen', type: 'pen', data: { /* Simplified JSON structure */ } },
-        'pencil': { name: 'Pencil', type: 'pencil', data: { /* Simplified JSON structure */ } },
-        'marker': { name: 'Marker', type: 'marker', data: { /* Simplified JSON structure */ } }
-    },
-    
-    async loadDefaultTemplate() {
-        return new Promise(resolve => {
-            setTimeout(() => {
-                AppState.template = this.templates['default'];
-                this.renderTemplateOptions();
-                resolve();
-            }, 100);
-        });
-    },
-
-    renderTemplateOptions() {
-        const container = document.getElementById('templateOptions');
-        container.innerHTML = '';
-        Object.entries(this.templates).forEach(([key, template]) => {
-            const option = document.createElement('div');
-            option.className = `template-option ${key === 'default' ? 'selected' : ''}`;
-            option.setAttribute('data-key', key);
-            option.innerHTML = `<h4>${template.name}</h4><p>${template.type.toUpperCase()} base tool</p>`;
-            option.addEventListener('click', () => this.selectTemplate(key, option));
-            container.appendChild(option);
-        });
-    },
-
-    selectTemplate(key, element) {
-        AppState.template = this.templates[key];
-        document.querySelectorAll('.template-option').forEach(el => el.classList.remove('selected'));
-        element.classList.add('selected');
-        Logger.info(`Selected template: ${AppState.template.name}`);
-    }
-};
-
-// ===================================================================================================
-// PRESSURE CURVE EDITOR
-// ===================================================================================================
-
-const PressureCurve = {
-    canvas: null,
-    ctx: null,
-    enabledCheckbox: null,
-    
-    init() {
-        this.canvas = document.getElementById('curveCanvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.enabledCheckbox = document.getElementById('pressureCurveEnabled');
-        
-        this.canvas.width = 400;
-        this.canvas.height = 150;
-
-        this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
-        this.canvas.addEventListener('dblclick', this.handleDoubleClick.bind(this));
-        
-        this.enabledCheckbox.addEventListener('change', this.renderCurve.bind(this));
-        
-        this.renderCurve();
-    },
-
-    handleDoubleClick(e) {
-        AppState.pressureCurvePoints = [[0, 0], [1, 1]];
-        this.renderCurve();
-        Logger.info('Pressure curve reset to linear.');
-    },
-
-    handleMouseDown(e) {
-        if (!this.enabledCheckbox.checked) return;
-        
-        const rect = this.canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        
-        let dragPointIndex = -1;
-
-        const pointSize = 8;
-        AppState.pressureCurvePoints.forEach(([x, y], index) => {
-            const px = x * this.canvas.width;
-            const py = this.canvas.height - (y * this.canvas.height);
-            
-            if (mouseX >= px - pointSize && mouseX <= px + pointSize &&
-                mouseY >= py - pointSize && mouseY <= py + pointSize) {
-                dragPointIndex = index;
-            }
-        });
-
-        if (dragPointIndex === -1 && AppState.pressureCurvePoints.length < 10) {
-            const x = Math.min(1, Math.max(0, mouseX / this.canvas.width));
-            const y = Math.min(1, Math.max(0, 1 - (mouseY / this.canvas.height)));
-            
-            let insertIndex = AppState.pressureCurvePoints.findIndex(p => p[0] > x);
-            if (insertIndex === -1) insertIndex = AppState.pressureCurvePoints.length;
-            
-            AppState.pressureCurvePoints.splice(insertIndex, 0, [x, y]);
-            
-            AppState.pressureCurvePoints.sort((a, b) => a[0] - b[0]);
-            
-            dragPointIndex = AppState.pressureCurvePoints.findIndex(p => p[0] === x && p[1] === y);
-
-            Logger.info(`Added new pressure curve point at (${x.toFixed(2)}, ${y.toFixed(2)})`);
-        }
-        
-        if (dragPointIndex !== -1) {
-            const moveHandler = (moveEvent) => {
-                const moveRect = this.canvas.getBoundingClientRect();
-                const newMouseX = moveEvent.clientX - moveRect.left;
-                const newMouseY = moveEvent.clientY - moveRect.top;
-
-                let newX = Math.min(1, Math.max(0, newMouseX / this.canvas.width));
-                let newY = Math.min(1, Math.max(0, 1 - (newMouseY / this.canvas.height)));
-
-                if (dragPointIndex === 0) {
-                    newX = 0; newY = 0;
-                }
-                if (dragPointIndex === AppState.pressureCurvePoints.length - 1) {
-                    newX = 1; newY = 1;
-                }
-                
-                AppState.pressureCurvePoints[dragPointIndex] = [newX, newY];
-                
-                AppState.pressureCurvePoints.sort((a, b) => a[0] - b[0]);
-                
-                this.renderCurve();
-            };
-
-            const upHandler = () => {
-                this.canvas.removeEventListener('mousemove', moveHandler);
-                window.removeEventListener('mouseup', upHandler);
-            };
-
-            this.canvas.addEventListener('mousemove', moveHandler);
-            window.addEventListener('mouseup', upHandler);
-        }
-    },
-
-    renderCurve() {
-        const { ctx, canvas } = this;
-        const width = canvas.width;
-        const height = canvas.height;
-        const points = AppState.pressureCurvePoints;
-        const enabled = this.enabledCheckbox.checked;
-
-        ctx.clearRect(0, 0, width, height);
-
-        // Draw grid lines
-        ctx.strokeStyle = '#e9ecef';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2);
-        ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height);
-        ctx.moveTo(width / 4, 0); ctx.lineTo(width / 4, height);
-        ctx.moveTo(width * 3 / 4, 0); ctx.lineTo(width * 3 / 4, height);
-        ctx.stroke();
-        
-        ctx.beginPath();
-        if (enabled) {
-            ctx.strokeStyle = '#667eea';
-            ctx.lineWidth = 3;
-            ctx.shadowBlur = 5;
-            ctx.shadowColor = '#667eea';
-        } else {
-            ctx.strokeStyle = '#adb5bd';
-            ctx.lineWidth = 2;
-            ctx.shadowBlur = 0;
-        }
-
-        ctx.moveTo(points[0][0] * width, height - (points[0][1] * height));
-
-        for (let i = 1; i < points.length; i++) {
-            const p = points[i];
-            ctx.lineTo(p[0] * width, height - (p[1] * height));
-        }
-
-        ctx.stroke();
-
-        // Draw points
-        ctx.shadowBlur = 0;
-        points.forEach(([x, y], index) => {
-            const px = x * width;
-            const py = height - (y * height);
-            
-            ctx.fillStyle = (index === 0 || index === points.length - 1) ? '#764ba2' : '#28a745';
-            ctx.beginPath();
-            ctx.arc(px, py, 4, 0, 2 * Math.PI);
-            ctx.fill();
-        });
-    }
-};
-
-// ===================================================================================================
-// CONVERTER LOGIC (Simplified Stub)
-// ===================================================================================================
-
-const Converter = {
-    async convertAll() {
-        if (AppState.conversionInProgress) {
-            Logger.warning('Conversion is already running.');
-            return;
-        }
-        
-        if (AppState.brushes.length === 0) {
-            UI.showStatus('No brushes loaded to convert.', 'error');
-            return;
-        }
-
-        AppState.conversionInProgress = true;
-        UI.showLoading(true, 'Starting conversion...');
-        UI.enableConvertButton(false);
-        UI.elements.cancelBtn.disabled = false;
-        
-        Logger.info(`Starting ${AppState.mode.toUpperCase()} conversion of ${AppState.brushes.length} brushes...`);
-        
-        const totalBrushes = AppState.brushes.length;
-        let convertedCount = 0;
-        let failedCount = 0;
-
-        for (let i = 0; i < totalBrushes; i++) {
-            if (!AppState.conversionInProgress) {
-                Logger.warning('Conversion cancelled by user.');
-                UI.showStatus('Conversion cancelled.', 'warning');
-                break;
-            }
-            
-            const brush = AppState.brushes[i];
-            
-            try {
-                // Simulate conversion process
-                await new Promise(resolve => setTimeout(resolve, AppState.mode === 'python' ? 10 : 50));
-                
-                convertedCount++;
-                Logger.success(`Converted brush ${i + 1}/${totalBrushes}: ${brush.name}`);
-            } catch (error) {
-                failedCount++;
-                Logger.error(`Failed to convert brush ${brush.name}: ${error.message}`);
-            }
-            
-            const progress = Math.round((convertedCount + failedCount) / totalBrushes * 100);
-            UI.updateProgress(progress);
-            UI.showStatus(`Converting ${brush.name}... (${convertedCount}/${totalBrushes})`, 'info');
-        }
-
-        AppState.conversionInProgress = false;
-        UI.showLoading(false);
-        UI.enableConvertButton(true);
-
-        if (convertedCount > 0) {
-            Logger.success(`Conversion complete! Successfully created ${convertedCount} file(s).`);
-            UI.showStatus(`Conversion Complete! ${convertedCount} brushes created.`, 'success');
-        } else {
-            Logger.error('Conversion finished with no output files.');
-            UI.showStatus('Conversion Failed. Check the log for details.', 'error');
-        }
-    }
-};
-
-// ===================================================================================================
-// INITIALIZATION
-// ===================================================================================================
-
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. Initialize UI and start the Python status check
-    UI.init();
-    
-    // 2. Initialize Pressure Curve editor
-    PressureCurve.init();
-});
-</script>
-</body>
-</html>
+<div
