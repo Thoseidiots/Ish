@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CSP Subtool Converter Pro - JavaScript Edition</title>
+<title>CSP Subtool Converter Pro - Hybrid Edition</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
 <style>
 /* CSS Styles */
@@ -14,7 +14,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .header h1{font-size:clamp(1.5em,4vw,2.5em);margin-bottom:10px;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,0.2)}
 .header p{opacity:0.9;font-size:1.1em}
 .content{padding:clamp(20px,4vw,40px);color:#333}
-.mode-selector{display:flex;gap:10px;margin-bottom:20px;background:#f8f9fa;padding:15px;border-radius:10px; display: none;}
+.mode-selector{display:flex;gap:10px;margin-bottom:20px;background:#f8f9fa;padding:15px;border-radius:10px;}
 .mode-btn{flex:1;padding:12px;border:2px solid #dee2e6;background:#fff;border-radius:8px;cursor:pointer;font-weight:500;transition:all 0.3s}
 .mode-btn.active{border-color:#667eea;background:#667eea;color:#fff}
 .mode-btn:hover:not(.active){border-color:#667eea;background:#f8f9ff}
@@ -74,6 +74,7 @@ input[type=range]{width:100%;margin:10px 0}
 .tab-content.active{display:block}
 .footer{text-align:center;padding:20px;margin-top:30px;color:rgba(255,255,255,0.7);font-size:0.9em}
 .info-banner{background:#d1ecf1;border:1px solid #bee5eb;border-radius:8px;padding:15px;margin-bottom:20px;color:#0c5460}
+.info-banner.warning-banner{background:#fff3cd;border-color:#ffeeba;color:#856404}
 .template-selector{background:#e7f3ff;border:2px solid #667eea;border-radius:10px;padding:20px;margin-bottom:20px}
 .template-selector h3{color:#667eea;margin-bottom:15px}
 .template-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px}
@@ -99,10 +100,19 @@ input[type=range]{width:100%;margin:10px 0}
 <div class="container">
     <header class="header">
         <h1>CSP Subtool Converter Pro 🎨</h1>
-        <p>Convert your brushes to Clip Studio Paint format (Client-Side JS Edition)</p>
+        <p>Convert your brushes to Clip Studio Paint format (Hybrid Edition)</p>
     </header>
 
     <div class="content">
+        
+        <div class="mode-selector" id="modeSelector">
+            <button class="mode-btn active" data-mode="python" id="pythonModeBtn">🐍 Python Backend (Full Features)</button>
+            <button class="mode-btn" data-mode="javascript" id="jsModeBtn">⚠️ JavaScript Mode (Limited)</button>
+        </div>
+
+        <div id="statusBanner" class="info-banner warning-banner" style="display:none;">
+            <strong>Warning:</strong> Python backend not running. Limited **JavaScript Mode** selected. Advanced features like ABR parsing are disabled.
+        </div>
         
         <div id="dropZone">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 12h-2v4H7v-4H5v6h14v-6zM5 10V4h14v6h2V4a2 2 0 00-2-2H5a2 2 0 00-2 2v6h2zM12 17l4-4h-3V8h-2v5H8l4 4z"/></svg>
@@ -144,7 +154,7 @@ input[type=range]{width:100%;margin:10px 0}
 
             <div id="settings-tab" class="tab-content active">
                 <div class="info-banner">
-                    This is the **JavaScript Edition**. The conversion is fast and runs directly in your browser.
+                    Current Mode: <span id="currentModeDisplay">Initializing...</span>
                 </div>
                 <div class="controls">
                     <div class="control-group">
@@ -230,16 +240,27 @@ input[type=range]{width:100%;margin:10px 0}
 
 <script>
 // ===================================================================================================
+// CONFIGURATION
+// ===================================================================================================
+
+const Config = {
+    PYTHON_BACKEND_URL: 'http://127.0.0.1:5000/api',
+    BACKEND_STATUS_URL: 'http://127.0.0.1:5000/api/python/status',
+    MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB
+    BACKEND_TIMEOUT_MS: 3000,
+};
+
+// ===================================================================================================
 // APPLICATION STATE MANAGEMENT
 // ===================================================================================================
 
 const AppState = {
     db: null,
+    mode: 'javascript', // Default to JS mode
     files: [],
     brushes: [],
     template: null,
     conversionInProgress: false,
-    maxFileSize: 50 * 1024 * 1024, // 50MB default for JS
     pressureCurvePoints: [[0, 0], [1, 1]], // Default linear curve
     
     reset() {
@@ -249,13 +270,10 @@ const AppState = {
         UI.showLoading(false);
         UI.elements.fileListContainer.style.display = 'none';
         UI.elements.brushPreviewGrid.innerHTML = '<p>Brushes will appear here after files are loaded.</p>';
-        UI.elements.log.innerHTML = `<div class="log-entry info">[${new Date().toLocaleTimeString('en-US', { hour12: false })}] [INFO] Application state reset.</div>`;
         UI.updateStats();
         UI.enableConvertButton(false);
         UI.showStatus('Awaiting file input...', 'info');
-        // Initial logs
-        Logger.info('SQL.js loaded successfully.');
-        Logger.info('Loading default CSP template...');
+        Logger.info('Application state reset.');
     }
 };
 
@@ -312,6 +330,10 @@ const UI = {
             progressFill: document.getElementById('progressFill'),
             opacitySetting: document.getElementById('opacitySetting'),
             opacityValue: document.getElementById('opacityValue'),
+            pythonModeBtn: document.getElementById('pythonModeBtn'),
+            jsModeBtn: document.getElementById('jsModeBtn'),
+            statusBanner: document.getElementById('statusBanner'),
+            currentModeDisplay: document.getElementById('currentModeDisplay'),
         };
         
         // Event Listeners
@@ -333,15 +355,76 @@ const UI = {
             tab.addEventListener('click', this.handleTabChange);
         });
 
-        // Initial loading sequence
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.setMode(e.target.getAttribute('data-mode')));
+        });
+
+        // Initialize state
         this.showLoading(true, 'Initializing...');
+        
+        // Initial loading sequence
         Promise.all([
-            new Promise(resolve => window.initSqlJs().then(() => { Logger.info('SQL.js loaded successfully.'); resolve(); })),
-            TemplateManager.loadDefaultTemplate().then(() => Logger.info('Loading default CSP template...'))
+            window.initSqlJs().then(() => { Logger.info('SQL.js loaded successfully.'); }),
+            TemplateManager.loadDefaultTemplate()
         ]).then(() => {
+            Logger.info('Loading default CSP template...');
+            this.checkPythonStatus();
+        });
+    },
+
+    async checkPythonStatus() {
+        Logger.info(`Attempting to connect to Python backend at ${Config.BACKEND_STATUS_URL}`);
+        
+        // Use a standard fetch with a timeout
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), Config.BACKEND_TIMEOUT_MS);
+
+            const response = await fetch(Config.BACKEND_STATUS_URL, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const data = await response.json();
+                Logger.info(`Python connection successful. Backend v${data.version} available.`);
+                this.setMode('python', data);
+            } else {
+                throw new Error(`Server responded with status: ${response.status}`);
+            }
+        } catch (error) {
+            // Log the error that the user was seeing.
+            Logger.warning(`Python connection failed: ${error.message || 'Timeout/Network Error'}`);
+            this.setMode('javascript');
+        } finally {
             this.showLoading(false);
             this.showStatus('Ready. Drop files to begin!', 'success');
-        });
+        }
+    },
+
+    setMode(mode, data = {}) {
+        AppState.mode = mode;
+        
+        document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelector(`.mode-btn[data-mode="${mode}"]`).classList.add('active');
+
+        if (mode === 'python') {
+            this.elements.statusBanner.style.display = 'none';
+            this.elements.currentModeDisplay.textContent = 'Python Backend (Full Features)';
+            this.elements.currentModeDisplay.parentElement.classList.remove('warning-banner');
+            this.elements.currentModeDisplay.parentElement.classList.add('info-banner');
+            Logger.info('Python backend mode selected.');
+            // Allow all file types (default input accept is fine)
+            this.elements.fileInput.setAttribute('accept', '.sut,.abr,.brushset');
+        } else {
+            this.elements.statusBanner.style.display = 'block';
+            this.elements.currentModeDisplay.textContent = 'JavaScript Mode (Limited)';
+            this.elements.currentModeDisplay.parentElement.classList.add('warning-banner');
+            this.elements.currentModeDisplay.parentElement.classList.remove('info-banner');
+            Logger.warning('JavaScript mode selected. Only `.sut` files are fully supported.');
+            // Limit file types in JS mode to those that don't need ABR parsing
+            this.elements.fileInput.setAttribute('accept', '.sut');
+        }
     },
     
     handleDrop(e) {
@@ -379,15 +462,25 @@ const UI = {
     },
     
     processFiles(files) {
-        const oversizedFiles = files.filter(f => f.size > AppState.maxFileSize);
+        const oversizedFiles = files.filter(f => f.size > Config.MAX_FILE_SIZE);
         if (oversizedFiles.length > 0) {
-            UI.showStatus(`Error: ${oversizedFiles.length} file(s) exceed the ${AppState.maxFileSize / 1024 / 1024}MB limit.`, 'error');
+            UI.showStatus(`Error: ${oversizedFiles.length} file(s) exceed the ${Config.MAX_FILE_SIZE / 1024 / 1024}MB limit.`, 'error');
             Logger.error(`The following files were too large: ${oversizedFiles.map(f => f.name).join(', ')}`);
-            files = files.filter(f => f.size <= AppState.maxFileSize);
+            files = files.filter(f => f.size <= Config.MAX_FILE_SIZE);
         }
         
+        if (AppState.mode === 'javascript') {
+            const unsupportedFiles = files.filter(f => !f.name.toLowerCase().endsWith('.sut'));
+            if (unsupportedFiles.length > 0) {
+                UI.showStatus(`Warning: ${unsupportedFiles.length} non-SUT files skipped in JavaScript Mode.`, 'warning');
+                Logger.warning(`Skipped files (JS Mode only supports .sut): ${unsupportedFiles.map(f => f.name).join(', ')}`);
+                files = files.filter(f => f.name.toLowerCase().endsWith('.sut'));
+            }
+        }
+
         if (files.length === 0) return;
         
+        // Use AppState.reset() only if no files were previously loaded, otherwise append
         if (AppState.files.length === 0) {
             AppState.reset();
         }
@@ -397,6 +490,7 @@ const UI = {
         
         UI.showLoading(true, 'Processing files...');
         
+        // This simulates the actual file parsing/processing time
         setTimeout(() => {
             files.forEach(file => {
                 Logger.info(`Parsed file: ${file.name}. Found 1 brush.`);
@@ -405,8 +499,8 @@ const UI = {
                     file: file.name,
                     type: file.name.endsWith('.sut') ? 'sut' : 'abr',
                     settings: {
-                        size: 512,
-                        opacity: 100
+                        size: parseInt(document.getElementById('sizeOverride').value),
+                        opacity: parseInt(document.getElementById('opacitySetting').value)
                     }
                 });
             });
@@ -423,10 +517,11 @@ const UI = {
     updateStats() {
         this.elements.statTotalFiles.textContent = AppState.files.length;
         this.elements.statTotalBrushes.textContent = AppState.brushes.length;
-        this.elements.statFailed.textContent = 0;
+        // In this stub, failed is just the difference of loaded files vs brushes (if any filtering happened)
+        this.elements.statFailed.textContent = AppState.files.length - AppState.brushes.length;
 
         if (AppState.brushes.length > 0) {
-            const totalSize = AppState.brushes.reduce((sum, b) => sum + b.settings.size, 0);
+            const totalSize = AppState.brushes.reduce((sum, b) => sum + (b.settings.size || 0), 0);
             const avgSize = Math.round(totalSize / AppState.brushes.length);
             this.elements.statAvgSize.textContent = `${avgSize}px`;
         } else {
@@ -449,8 +544,10 @@ const UI = {
             const item = document.createElement('div');
             item.className = 'preview-item';
             
+            // Placeholder SVG for preview
+            const svgColor = AppState.mode === 'python' ? '%23667eea' : '%23ff9800';
             const img = document.createElement('img');
-            img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="%23667eea" stroke-width="5"/></svg>';
+            img.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="${svgColor}" stroke-width="5"/></svg>`;
             img.alt = brush.name;
             
             const name = document.createElement('p');
@@ -711,7 +808,7 @@ const Converter = {
         UI.enableConvertButton(false);
         UI.elements.cancelBtn.disabled = false;
         
-        Logger.info(`Starting JS conversion of ${AppState.brushes.length} brushes...`);
+        Logger.info(`Starting ${AppState.mode.toUpperCase()} conversion of ${AppState.brushes.length} brushes...`);
         
         const totalBrushes = AppState.brushes.length;
         let convertedCount = 0;
@@ -727,7 +824,8 @@ const Converter = {
             const brush = AppState.brushes[i];
             
             try {
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // Simulate conversion process
+                await new Promise(resolve => setTimeout(resolve, AppState.mode === 'python' ? 10 : 50));
                 
                 convertedCount++;
                 Logger.success(`Converted brush ${i + 1}/${totalBrushes}: ${brush.name}`);
@@ -746,10 +844,10 @@ const Converter = {
         UI.enableConvertButton(true);
 
         if (convertedCount > 0) {
-            Logger.success(`JS Conversion complete! Successfully created ${convertedCount} file(s).`);
+            Logger.success(`Conversion complete! Successfully created ${convertedCount} file(s).`);
             UI.showStatus(`Conversion Complete! ${convertedCount} brushes created.`, 'success');
         } else {
-            Logger.error('JS Conversion finished with no output files.');
+            Logger.error('Conversion finished with no output files.');
             UI.showStatus('Conversion Failed. Check the log for details.', 'error');
         }
     }
@@ -760,7 +858,7 @@ const Converter = {
 // ===================================================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Initialize UI and attach event listeners
+    // 1. Initialize UI and start the Python status check
     UI.init();
     
     // 2. Initialize Pressure Curve editor
